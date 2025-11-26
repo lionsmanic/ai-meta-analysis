@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import matplotlib.lines as mlines
+import matplotlib.gridspec as gridspec
 from pypdf import PdfReader
 import scipy.stats as stats
 import io
@@ -12,7 +12,7 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Journal Quality Edition)")
+st.title("🧬 AI-Meta Analysis Pro (Final Perfect Alignment)")
 st.markdown("### 整合 PICO、RoB 評讀、數據萃取與 **期刊級統計圖表**")
 
 # --- 設定 Domain 名稱對照表 ---
@@ -39,7 +39,6 @@ class MetaAnalysisEngine:
             self._clean_and_calculate_effect_sizes()
             if not self.df.empty and 'TE' in self.df.columns:
                 self._run_random_effects()
-                # 即使研究少也嘗試計算，避免屬性缺失錯誤
                 self._calculate_influence_diagnostics()
         except Exception as e:
             st.error(f"統計運算警告: {e}")
@@ -108,6 +107,11 @@ class MetaAnalysisEngine:
             return
             
         k = len(self.df); res = self.results
+        # 如果研究數太少，不進行診斷
+        if k < 3:
+            self.influence_df = pd.DataFrame()
+            return
+
         original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
         
@@ -134,7 +138,7 @@ class MetaAnalysisEngine:
 
                 influence_data.append({
                     'Study ID': self.df.loc[i, 'Study ID'],
-                    'TE': self.df.loc[i, 'TE'], # 修復 KeyError
+                    'TE': self.df.loc[i, 'TE'],
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -145,7 +149,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 (Single Axis Compact Layout) ---
+# --- 繪圖函式 (Space Optimized) ---
 
 def plot_forest_professional(ma_engine):
     df = ma_engine.df
@@ -153,44 +157,41 @@ def plot_forest_professional(ma_engine):
     measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
     
-    # 使用單一畫布，手動控制 X 軸位置
+    # 設定
     plt.rcParams.update({'font.size': 12, 'figure.dpi': 300, 'font.family': 'sans-serif'})
     n_studies = len(df)
-    
-    # 減少高度間距，讓行與行更緊湊
     fig_height = n_studies * 0.4 + 2.5 
-    fig, ax = plt.subplots(figsize=(14, fig_height))
+    fig, ax = plt.subplots(figsize=(14, fig_height)) # 寬度維持 14
     
-    # 設定座標系統：X軸 0-100, Y軸 0-(n+4)
     n_rows = n_studies + 4
     ax.set_ylim(0, n_rows)
     ax.set_xlim(0, 100)
-    ax.axis('off') # 隱藏所有邊框
+    ax.axis('off')
     
-    # --- 定義欄位 X 座標 (緊湊型) ---
-    # 這些值代表在 0-100 的畫布寬度上的百分比位置
+    # --- X 座標設定 (重新分配空間以解決重疊) ---
+    # 左側數據區 (0-52)
     x_study = 0
     x_tx_ev = 32
     x_tx_tot = 38
     x_ctrl_ev = 46
     x_ctrl_tot = 52
-    # 圖形區域
-    x_plot_start = 58
-    x_plot_end = 82
-    # 統計數值
-    x_rr = 88
-    x_ci = 95
-    x_wt = 100
+    
+    # 中間圖形區 (56-74) -> 稍微縮窄圖形，讓給右邊
+    x_plot_start = 56
+    x_plot_end = 74
+    
+    # 右側統計區 (78-100) -> 拉開距離
+    x_rr = 80      # 數值 (0.46)
+    x_ci = 90      # 區間 [0.19; 1.13]
+    x_wt = 100     # 權重 100.0% (靠右對齊)
     
     # --- Header ---
     y_head = n_rows - 1
     ax.text(x_study, y_head, "Study", fontweight='bold', ha='left')
     
     if is_binary:
-        # 第一層 Header
         ax.text((x_tx_ev + x_tx_tot)/2, y_head + 0.6, "Tx", fontweight='bold', ha='center')
         ax.text((x_ctrl_ev + x_ctrl_tot)/2, y_head + 0.6, "Ctrl", fontweight='bold', ha='center')
-        # 第二層 Header
         ax.text(x_tx_ev, y_head, "Events", fontweight='bold', ha='center', fontsize=10)
         ax.text(x_tx_tot, y_head, "Total", fontweight='bold', ha='center', fontsize=10)
         ax.text(x_ctrl_ev, y_head, "Events", fontweight='bold', ha='center', fontsize=10)
@@ -204,15 +205,13 @@ def plot_forest_professional(ma_engine):
     ax.text(x_ci, y_head, "95% CI", fontweight='bold', ha='center')
     ax.text(x_wt, y_head, "Weight", fontweight='bold', ha='right')
     
-    # 分隔線
     ax.plot([0, 100], [y_head-0.4, y_head-0.4], color='black', linewidth=1)
 
-    # --- Data Transformation Logic ---
+    # --- Data Transformation ---
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
         center = 1.0
-        # Log scale mapping
         all_v = list(vals) + list(lows) + list(ups)
         v_min = min(0.1, min(all_v)*0.8); v_max = max(10, max(all_v)*1.2)
         
@@ -231,7 +230,7 @@ def plot_forest_professional(ma_engine):
     for i, row in df.iterrows():
         y = n_rows - 2 - i
         
-        # 1. 文字數據
+        # 1. Data
         ax.text(x_study, y, str(row['Study ID']), ha='left', va='center')
         
         if is_binary:
@@ -240,24 +239,22 @@ def plot_forest_professional(ma_engine):
             ax.text(x_ctrl_ev, y, str(int(row['Ctrl Events'])), ha='center', va='center')
             ax.text(x_ctrl_tot, y, str(int(row['Ctrl Total'])), ha='center', va='center')
         else:
-            # 為了緊湊，連續變項顯示簡化
             ax.text((x_tx_ev+x_tx_tot)/2, y, f"{row['Tx Mean']:.1f}", ha='center', va='center')
             ax.text((x_ctrl_ev+x_ctrl_tot)/2, y, f"{row['Ctrl Mean']:.1f}", ha='center', va='center')
 
-        # 2. 森林圖繪製
+        # 2. Plot
         x = transform(vals[i]); xl = transform(lows[i]); xr = transform(ups[i])
-        ax.plot([xl, xr], [y, y], color='black', linewidth=1.2) # 誤差線
-        # 方塊
+        ax.plot([xl, xr], [y, y], color='black', linewidth=1.2)
         sz = 0.3 + (row['weight']/100)*0.3
         rect = mpatches.Rectangle((x - sz/2, y - sz/2), sz, sz, facecolor='gray', alpha=0.8)
         ax.add_patch(rect)
         
-        # 3. 右側統計
+        # 3. Stats
         ax.text(x_rr, y, f"{vals[i]:.2f}", ha='center', va='center')
         ax.text(x_ci, y, f"[{lows[i]:.2f}; {ups[i]:.2f}]", ha='center', va='center', fontsize=11)
         ax.text(x_wt, y, f"{row['weight']:.1f}%", ha='right', va='center')
 
-    # --- Pooled Result ---
+    # --- Pooled ---
     y_pool = 1.5
     ax.plot([0, 100], [y_pool+0.8, y_pool+0.8], color='black', linewidth=0.8)
     
@@ -271,21 +268,20 @@ def plot_forest_professional(ma_engine):
     ax.text(x_ci, y_pool, f"[{pool_low:.2f}; {pool_up:.2f}]", fontweight='bold', ha='center', va='center')
     ax.text(x_wt, y_pool, "100.0%", fontweight='bold', ha='right', va='center')
     
-    # 菱形
+    # Diamond
     px = transform(pool_val); pl = transform(pool_low); pr = transform(pool_up)
     diamond = plt.Polygon([[pl, y_pool], [px, y_pool+0.3], [pr, y_pool], [px, y_pool-0.3]], color='red', alpha=0.6)
     ax.add_patch(diamond)
     
-    # 垂直參考線
+    # Center Line
     cx = transform(center)
     ax.plot([cx, cx], [0.5, n_rows-1.5], color='black', linestyle=':', linewidth=1)
     
-    # --- Footer (Heterogeneity & Axis) ---
-    # 異質性資訊
+    # --- Footer ---
     het_text = f"Heterogeneity: $I^2$={res['I2']:.1f}%, $\\tau^2$={res['tau2']:.3f}, $p$={res['p_Q']:.3f}"
     ax.text(x_study, 0.5, het_text, ha='left', va='center', fontsize=10)
     
-    # X軸刻度與標籤
+    # Axis
     y_axis = 0.8
     ax.plot([x_plot_start, x_plot_end], [y_axis, y_axis], color='black', linewidth=1)
     ticks = [v_min, center, v_max]
@@ -309,7 +305,7 @@ def plot_leave_one_out_professional(ma_engine):
     measure = ma_engine.measure
     res = ma_engine.results
     
-    plt.rcParams.update({'font.size': 12, 'figure.dpi': 300})
+    plt.rcParams.update({'font.size': 10, 'figure.dpi': 300})
     n_studies = len(inf_df)
     fig_height = n_studies * 0.5 + 2
     
@@ -317,20 +313,18 @@ def plot_leave_one_out_professional(ma_engine):
     n_rows = n_studies + 2
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
-    # 欄位定義
+    # Similar Coordinates
     x_study = 0
     x_plot_start = 45
     x_plot_end = 75
     x_stat = 85
     
-    # Header
     y_head = n_rows - 0.5
     ax.text(x_study, y_head, "Study Omitted", fontweight='bold', ha='left')
     ax.text((x_plot_start+x_plot_end)/2, y_head, f"{measure} (95% CI)", fontweight='bold', ha='center')
     ax.text(x_stat, y_head, "Effect Size", fontweight='bold', ha='center')
     ax.plot([0, 100], [y_head-0.4, y_head-0.4], color='black', linewidth=1)
     
-    # Transform
     if measure == "RR":
         vals = np.exp(inf_df['TE.del']); lows = np.exp(inf_df['lower.del']); ups = np.exp(inf_df['upper.del'])
         orig_val = np.exp(res['TE_pooled']); orig_low = np.exp(res['lower_pooled']); orig_up = np.exp(res['upper_pooled'])
@@ -346,33 +340,28 @@ def plot_leave_one_out_professional(ma_engine):
         v_min, v_max = vals.min()-0.5, vals.max()+0.5
         def transform(v): return x_plot_start + (v-v_min)/(v_max-v_min)*(x_plot_end-x_plot_start)
 
-    # Rows
     for i, row in inf_df.iterrows():
         y = n_rows - 1.5 - i
         ax.text(x_study, y, f"Omitting {row['Study ID']}", ha='left', va='center')
-        
         x = transform(vals[i]); xl = transform(lows[i]); xr = transform(ups[i])
         ax.plot([xl, xr], [y, y], color='black', linewidth=1.2)
         ax.plot(x, y, 's', color='gray', markersize=6)
-        
         txt = f"{vals[i]:.2f} [{lows[i]:.2f}; {ups[i]:.2f}]"
         ax.text(x_stat, y, txt, ha='center', va='center')
         
-    # Pooled Diamond
     y_pool = 0.5
-    px = transform(orig_val); pl = transform(orig_low); pr = transform(orig_up)
-    diamond = plt.Polygon([[pl, y_pool], [px, y_pool+0.3], [pr, y_pool], [px, y_pool-0.3]], color='red', alpha=0.6)
-    ax.add_patch(diamond)
-    
+    px, pl, pr = transform_none(orig_val), transform_none(orig_low), transform_none(orig_up)
+    ax.fill([pl, px, pr, px], [y_pool, y_pool+0.25, y_pool, y_pool-0.25], color='red', alpha=0.6)
     ax.text(x_study, y_pool, "All Studies Included", fontweight='bold', ha='left', va='center')
     txt_orig = f"{orig_val:.2f} [{orig_low:.2f}; {orig_up:.2f}]"
     ax.text(x_stat, y_pool, txt_orig, fontweight='bold', ha='center', va='center')
     
     cx = transform(center)
     ax.plot([cx, cx], [0, n_rows-1], color='black', linestyle=':', linewidth=1)
-    
     plt.tight_layout()
     return fig
+
+def transform_none(v): return v 
 
 def plot_funnel(ma_engine):
     df = ma_engine.df; res = ma_engine.results; te_pooled = res['TE_pooled']
