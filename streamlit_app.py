@@ -9,8 +9,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Data Extraction Edition)")
-st.markdown("### 整合 PICO、RoB 評讀、數據萃取與視覺化的全方位工具")
+st.title("🧬 AI-Meta Analysis Pro (Advanced Extraction)")
+st.markdown("### 整合 PICO、RoB 評讀、智能數據萃取與視覺化的全方位工具")
 
 # --- 設定 Domain 名稱對照表 ---
 DOMAIN_MAPPING = {
@@ -121,16 +121,22 @@ with tab1:
 with tab2:
     st.header("🤖 AI 自動 RoB 2.0 評讀 (含理由)")
     
+    # 初始化 Session State
     if 'rob_results' not in st.session_state: st.session_state.rob_results = None
-    if 'uploaded_files' not in st.session_state: st.session_state.uploaded_files = [] # 保存上傳檔案以供 Tab 3 使用
+    if 'uploaded_files' not in st.session_state: st.session_state.uploaded_files = []
+    
+    # 初始化 outcome 變數，確保 Tab 3 讀得到預設值
+    if 'rob_primary' not in st.session_state: st.session_state.rob_primary = "Menopausal symptoms relief"
+    if 'rob_secondary' not in st.session_state: st.session_state.rob_secondary = "Cancer recurrence"
 
     col_file, col_outcome = st.columns([1, 1])
     with col_file:
         uploaded_files = st.file_uploader("上傳 PDF 文獻 (支援多檔)", type="pdf", accept_multiple_files=True, key="rob_uploader")
-        if uploaded_files: st.session_state.uploaded_files = uploaded_files # 同步到 Session
+        if uploaded_files: st.session_state.uploaded_files = uploaded_files
     with col_outcome:
-        primary_outcome = st.text_input("主要 Outcome", "Menopausal symptoms relief", key="rob_primary")
-        secondary_outcome = st.text_input("次要 Outcome", "Cancer recurrence", key="rob_secondary")
+        # 使用 key 讓 Streamlit 自動將輸入值綁定到 session_state
+        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.rob_primary, key="rob_primary")
+        secondary_outcome = st.text_input("次要 Outcome", value=st.session_state.rob_secondary, key="rob_secondary")
 
     if st.button("🚀 開始 RoB 評讀") and api_key and uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); table_rows = []
@@ -182,89 +188,96 @@ with tab2:
             with c2: st.pyplot(plot_summary_bar(viz_df, sel_outcome))
 
 # ==========================================
-# TAB 3: 數據萃取 (NEW FEATURE)
+# TAB 3: 數據萃取 (UPDATED)
 # ==========================================
 with tab3:
     st.header("📊 數據萃取 (Data Extraction)")
-    st.markdown("針對選定的 Outcome，自動萃取 Intervention (Tx) 與 Control (Ctrl) 的統計數值，以供森林圖繪製使用。")
+    st.markdown("針對選定的 Outcome，自動萃取詳細治療內容、族群特性及統計數值。")
     
     if 'data_extract_results' not in st.session_state: st.session_state.data_extract_results = None
     
     # 使用者介面
     col_ex_outcome, col_ex_type = st.columns([2, 1])
     with col_ex_outcome:
-        # 讓使用者輸入想要萃取的 Outcome (預設帶入 RoB 的主要 outcome)
-        target_outcome = st.text_input("欲萃取的 Outcome 名稱", "Menopausal symptoms relief", key="extract_outcome")
-    with col_ex_type:
-        # 選擇數據型態
-        data_type = st.radio("數據型態 (Data Type)", 
-                             ["二元數據 (Binary: Events/Total)", "連續數據 (Continuous: Mean/SD)"],
-                             help="二元數據用於計算 Risk Ratio / Odds Ratio；連續數據用於計算 Mean Difference")
+        # 1. 自動從 Tab 2 的設定讀取選項
+        outcome_options = [st.session_state.get('rob_primary', ''), st.session_state.get('rob_secondary', '')]
+        # 過濾空字串
+        outcome_options = [opt for opt in outcome_options if opt]
+        # 如果沒有設定，給一個預設提示
+        if not outcome_options: outcome_options = ["請先至 RoB 分頁設定 Outcome"]
+            
+        target_outcome = st.selectbox("欲萃取的 Outcome (已連動 RoB 設定)", outcome_options)
 
-    if st.button("🔍 開始數據萃取") and api_key and st.session_state.uploaded_files:
+    with col_ex_type:
+        data_type = st.radio("數據型態 (Data Type)", 
+                             ["二元數據 (Binary: Events/Total)", "連續數據 (Continuous: Mean/SD)"])
+
+    if st.button("🔍 開始詳細萃取") and api_key and st.session_state.uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); extract_rows = []
         files = st.session_state.uploaded_files
         
         for i, file in enumerate(files):
-            status_text.text(f"正在搜尋數據：{file.name} ...")
+            status_text.text(f"正在搜尋數據與細節：{file.name} ...")
             try:
                 pdf_reader = PdfReader(file)
                 text_content = ""
                 for page in pdf_reader.pages: text_content += page.extract_text()
             except: continue
 
-            # 根據數據型態構建不同的 Prompt
+            # 通用萃取說明 (包含治療內容與族群)
+            base_instruction = f"""
+            你是一位醫學數據分析師。請閱讀以下文獻，針對 Outcome: "{target_outcome}" 找出相關數據與細節。
+            
+            **請務必萃取以下文字描述 (請精簡摘要，用英文)：**
+            1. **Population**: 研究族群特性 (例如疾病分期、年齡層)。
+            2. **Tx_Details**: 實驗組的具體治療內容 (藥名、劑量、頻率)。
+            3. **Ctrl_Details**: 對照組的具體治療內容 (安慰劑或藥名)。
+            """
+
             if "Binary" in data_type:
-                # 二元數據 Prompt
                 prompt = f"""
-                你是一位醫學數據分析師。請閱讀以下文獻，針對 Outcome: "{target_outcome}" 找出實驗組 (Intervention/Tx) 與對照組 (Control) 的數據。
+                {base_instruction}
                 
                 **目標數據型態：Binary (二元數據)**
-                我需要：
-                1. Tx_Events: 實驗組發生事件的人數
-                2. Tx_Total: 實驗組總人數
-                3. Ctrl_Events: 對照組發生事件的人數
-                4. Ctrl_Total: 對照組總人數
+                4. Tx_Events (實驗組事件數)
+                5. Tx_Total (實驗組總數)
+                6. Ctrl_Events (對照組事件數)
+                7. Ctrl_Total (對照組總數)
                 
                 **輸出格式嚴格要求：**
-                請輸出單行純文字數據，使用 '|' 分隔，格式如下：
-                StudyID | Tx_Events | Tx_Total | Ctrl_Events | Ctrl_Total
-                (若文中未明確提及某數值，請填寫 NA)
+                單行純文字，使用 '|' 分隔，順序如下：
+                StudyID | Population | Tx_Details | Ctrl_Details | Tx_Events | Tx_Total | Ctrl_Events | Ctrl_Total
+                (若數值找不到填 NA)
 
                 **文獻內容：** {text_content[:25000]}
                 """
-                cols_schema = ['Study ID', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
+                cols_schema = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
             else:
-                # 連續數據 Prompt
                 prompt = f"""
-                你是一位醫學數據分析師。請閱讀以下文獻，針對 Outcome: "{target_outcome}" 找出實驗組 (Intervention/Tx) 與對照組 (Control) 的數據。
+                {base_instruction}
                 
                 **目標數據型態：Continuous (連續數據)**
-                我需要：
-                1. Tx_Mean: 實驗組平均值
-                2. Tx_SD: 實驗組標準差 (Standard Deviation)
-                3. Tx_Total: 實驗組總人數
-                4. Ctrl_Mean: 對照組平均值
-                5. Ctrl_SD: 對照組標準差
-                6. Ctrl_Total: 對照組總人數
+                4. Tx_Mean
+                5. Tx_SD
+                6. Tx_Total
+                7. Ctrl_Mean
+                8. Ctrl_SD
+                9. Ctrl_Total
                 
-                (注意：若文中給的是 SE (Standard Error)，請嘗試轉換為 SD，或直接填寫文中數值並標註。若找不到，填 NA)
-
                 **輸出格式嚴格要求：**
-                請輸出單行純文字數據，使用 '|' 分隔，格式如下：
-                StudyID | Tx_Mean | Tx_SD | Tx_Total | Ctrl_Mean | Ctrl_SD | Ctrl_Total
+                單行純文字，使用 '|' 分隔，順序如下：
+                StudyID | Population | Tx_Details | Ctrl_Details | Tx_Mean | Tx_SD | Tx_Total | Ctrl_Mean | Ctrl_SD | Ctrl_Total
 
                 **文獻內容：** {text_content[:25000]}
                 """
-                cols_schema = ['Study ID', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
+                cols_schema = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
 
             try:
                 response = model.generate_content(prompt)
                 lines = response.text.strip().split('\n')
                 for line in lines:
-                    if '|' in line and 'StudyID' not in line: # 過濾表頭
+                    if '|' in line and 'StudyID' not in line:
                         cols = [c.strip() for c in line.split('|')]
-                        # 檢查欄位數量是否符合預期
                         if len(cols) == len(cols_schema):
                             extract_rows.append(cols)
             except: pass
@@ -273,23 +286,16 @@ with tab3:
         if extract_rows:
             df_extract = pd.DataFrame(extract_rows, columns=cols_schema)
             st.session_state.data_extract_results = df_extract
-            status_text.text("數據萃取完成！")
+            status_text.text("萃取完成！")
         else:
-            st.error("AI 未能找到相關數據，請確認 Outcome 名稱是否與文內一致。")
+            st.error("萃取失敗，請確認文獻內容是否包含該 Outcome。")
 
     # 顯示結果
     if st.session_state.data_extract_results is not None:
-        st.subheader(f"📊 萃取結果表: {target_outcome}")
-        
-        # 根據數據型態顯示不同的說明
-        if "Binary" in data_type:
-            st.info("💡 此表格適用於 Risk Ratio (RR) 或 Odds Ratio (OR) 分析。")
-        else:
-            st.info("💡 此表格適用於 Mean Difference (MD) 或 SMD 分析。")
-            
+        st.subheader(f"📊 萃取結果: {target_outcome}")
+        st.info("💡 包含介入措施細節 (Tx/Ctrl Details) 與族群特性 (Population)，方便進行次群組分析。")
         st.dataframe(st.session_state.data_extract_results, use_container_width=True)
         
-        # 提供 CSV 下載按鈕 (方便後續跑 R 或 RevMan)
         csv = st.session_state.data_extract_results.to_csv(index=False).encode('utf-8-sig')
         st.download_button("📥 下載 Excel/CSV 檔", data=csv, file_name=f"extraction_{target_outcome}.csv", mime="text/csv")
     
@@ -301,12 +307,7 @@ with tab3:
 # ==========================================
 with tab4:
     st.markdown("""
-    ### 使用指南
-    1. **RoB 評讀**：至第二分頁上傳 PDF，進行品質評讀。
-    2. **數據萃取 (NEW!)**：
-       - 切換至第三分頁。
-       - 輸入您想抓取的 Outcome 名稱 (例如：Pain Score)。
-       - 選擇數據類型 (二元 Binary 或 連續 Continuous)。
-       - 點擊萃取，AI 會自動掃描所有已上傳的 PDF。
-       - 結果可下載為 CSV，直接用於 Meta-analysis 軟體。
+    ### 功能更新說明
+    1. **Outcome 連動**：數據萃取頁面的 Outcome 選單現在會自動抓取您在 RoB 頁面設定的主要/次要結果。
+    2. **詳細資訊萃取**：新增萃取 **Population (族群)**、**Tx Details (實驗組內容)**、**Ctrl Details (對照組內容)** 欄位。
     """)
