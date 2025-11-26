@@ -9,36 +9,31 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Full Domain Names)")
+st.title("🧬 AI-Meta Analysis Pro (Clean Plots & Detailed Tables)")
 st.markdown("### 整合 PICO 檢索、AI 詳盡評讀與 RoB 視覺化工具")
 
-# --- 設定 Domain 名稱對照表 (全域變數) ---
-DOMAIN_MAPPING = {
-    'D1': 'D1 Randomization\n(隨機過程)',
-    'D2': 'D2 Deviations\n(介入偏離)',
-    'D3': 'D3 Missing Data\n(缺失數據)',
-    'D4': 'D4 Measurement\n(結果測量)',
-    'D5': 'D5 Reporting\n(選擇性報告)',
-    'Overall': 'Overall Bias\n(整體風險)'
-}
-
-# --- Helper Function: 繪製紅綠燈圖 (Traffic Light Plot) ---
+# --- Helper Function: 繪製紅綠燈圖 (純英文標籤以防亂碼) ---
 def plot_traffic_light(df, title):
     color_map = {'Low': '#2E7D32', 'Some concerns': '#F9A825', 'High': '#C62828'}
     studies = df['Study ID'].tolist()
     
-    # 原始欄位鍵值 (對應 DataFrame)
-    raw_domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
-    # 顯示用的標籤 (從 Mapping 取得)
-    display_domains = [DOMAIN_MAPPING[d] for d in raw_domains]
+    # 原始數據欄位
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    # 圖表用的純英文標籤 (避免中文亂碼)
+    plot_labels = [
+        'D1 Randomization', 
+        'D2 Deviations', 
+        'D3 Missing Data', 
+        'D4 Measurement', 
+        'D5 Reporting', 
+        'Overall Bias'
+    ]
     
-    fig, ax = plt.subplots(figsize=(10, len(studies) * 0.8 + 2)) #稍微加寬
+    fig, ax = plt.subplots(figsize=(10, len(studies) * 0.8 + 2))
     
     for y, study in enumerate(studies):
-        for x, domain in enumerate(raw_domains):
-            # 取得 DataFrame 中的值
-            col_name = DOMAIN_MAPPING[domain] # 取得對應的新欄位名稱
-            risk_val = df[df['Study ID'] == study][col_name].values[0]
+        for x, domain in enumerate(domains):
+            risk_val = df[df['Study ID'] == study][domain].values[0]
             risk = str(risk_val).strip()
             
             color = '#808080'
@@ -54,12 +49,12 @@ def plot_traffic_light(df, title):
             ax.add_patch(circle)
             ax.text(x, len(studies) - 1 - y, symbol, ha='center', va='center', color='white', fontweight='bold', fontsize=12)
 
-    ax.set_xlim(-0.5, len(raw_domains) - 0.5)
+    ax.set_xlim(-0.5, len(domains) - 0.5)
     ax.set_ylim(-0.5, len(studies) - 0.5)
     
-    # 設定 X 軸標籤 (使用完整名稱)
-    ax.set_xticks(range(len(display_domains)))
-    ax.set_xticklabels(display_domains, fontsize=9, fontweight='bold')
+    # 設定 X 軸 (英文)
+    ax.set_xticks(range(len(plot_labels)))
+    ax.set_xticklabels(plot_labels, fontsize=10, fontweight='bold')
     
     ax.set_yticks(range(len(studies)))
     ax.set_yticklabels(studies[::-1], fontsize=10)
@@ -73,15 +68,21 @@ def plot_traffic_light(df, title):
     ax.legend(handles=patches, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3, frameon=False)
     return fig
 
-# --- Helper Function: 繪製匯總圖 (Summary Plot) ---
+# --- Helper Function: 繪製匯總圖 (純英文標籤) ---
 def plot_summary_bar(df, title):
-    raw_domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
-    display_domains = [DOMAIN_MAPPING[d] for d in raw_domains]
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    plot_labels = [
+        'D1 Randomization', 
+        'D2 Deviations', 
+        'D3 Missing Data', 
+        'D4 Measurement', 
+        'D5 Reporting', 
+        'Overall Bias'
+    ]
     
     data = []
-    for domain in raw_domains:
-        col_name = DOMAIN_MAPPING[domain]
-        counts = df[col_name].apply(lambda x: 'Low' if 'Low' in str(x) else ('High' if 'High' in str(x) else 'Some concerns')).value_counts()
+    for domain in domains:
+        counts = df[domain].apply(lambda x: 'Low' if 'Low' in str(x) else ('High' if 'High' in str(x) else 'Some concerns')).value_counts()
         total = len(df)
         if total == 0: total = 1
         data.append([
@@ -90,8 +91,8 @@ def plot_summary_bar(df, title):
             (counts.get('High', 0) / total) * 100
         ])
         
-    df_plot = pd.DataFrame(data, columns=['Low', 'Some concerns', 'High'], index=display_domains)
-    fig, ax = plt.subplots(figsize=(10, 5)) # 稍微加高
+    df_plot = pd.DataFrame(data, columns=['Low', 'Some concerns', 'High'], index=plot_labels)
+    fig, ax = plt.subplots(figsize=(10, 5))
     colors = ['#2E7D32', '#F9A825', '#C62828']
     df_plot.plot(kind='barh', stacked=True, color=colors, ax=ax, width=0.7)
     ax.set_xlim(0, 100)
@@ -145,7 +146,7 @@ with tab1:
         st.markdown(f"👉 [點此前往 PubMed 搜尋](https://pubmed.ncbi.nlm.nih.gov/?term={final_query})")
 
 # ==========================================
-# TAB 2: AI 全自動 RoB 評讀 (含視覺化 + 理由)
+# TAB 2: AI 全自動 RoB 評讀
 # ==========================================
 with tab2:
     st.header("🤖 AI 自動 RoB 2.0 評讀 (含理由)")
@@ -177,7 +178,6 @@ with tab2:
             except:
                 continue
 
-            # Prompt
             prompt = f"""
             你是一位嚴謹的實證醫學專家。請根據 RoB 2.0 (Risk of Bias 2) 指引評讀以下文獻。
             
@@ -217,12 +217,8 @@ with tab2:
             progress_bar.progress((i + 1) / len(uploaded_files))
         
         if table_rows:
-            # 建立 DataFrame 並重新命名欄位
+            # 建立 DataFrame (原始簡單名稱)
             df = pd.DataFrame(table_rows, columns=['Study ID', 'Outcome', 'D1', 'D2', 'D3', 'D4', 'D5', 'Overall', 'Reasoning'])
-            
-            # 重新命名欄位以顯示完整名稱
-            df = df.rename(columns=DOMAIN_MAPPING)
-            
             st.session_state.rob_results = df
             status_text.text("分析完成！")
         else:
@@ -234,19 +230,28 @@ with tab2:
     if st.session_state.rob_results is not None:
         df = st.session_state.rob_results
         
-        st.subheader("📋 詳細評讀數據表 (按 Outcome 分組)")
-        st.info("💡 滑鼠移至「Reasoning」欄位可查看完整理由。")
-
-        unique_outcomes = df['Outcome'].unique()
+        # --- 顯示用的中文欄位對照表 ---
+        table_mapping = {
+            'D1': 'D1 Randomization\n(隨機過程)',
+            'D2': 'D2 Deviations\n(介入偏離)',
+            'D3': 'D3 Missing Data\n(缺失數據)',
+            'D4': 'D4 Measurement\n(結果測量)',
+            'D5': 'D5 Reporting\n(選擇性報告)',
+            'Overall': 'Overall Bias\n(整體風險)',
+            'Reasoning': 'Reasoning\n(評讀理由)'
+        }
         
+        st.subheader("📋 詳細評讀數據表")
+        
+        unique_outcomes = df['Outcome'].unique()
         for outcome in unique_outcomes:
             st.markdown(f"#### 📌 Outcome: {outcome}")
-            # 篩選並隱藏 Outcome 欄位
+            # 篩選數據 -> 移除 Outcome 欄 -> 重新命名欄位為中文對照
             subset_df = df[df['Outcome'] == outcome].reset_index(drop=True).drop(columns=['Outcome'])
-            st.dataframe(subset_df, use_container_width=True)
+            st.dataframe(subset_df.rename(columns=table_mapping), use_container_width=True)
             st.markdown("---")
 
-        st.subheader("🚦 RoB 2.0 視覺化")
+        st.subheader("🚦 RoB 2.0 視覺化 (Visual Summary)")
         
         selected_outcome = st.selectbox("請選擇要繪製圖表的 Outcome:", unique_outcomes)
         viz_subset_df = df[df['Outcome'] == selected_outcome]
@@ -270,12 +275,7 @@ with tab2:
 with tab3:
     st.markdown("""
     ### 功能說明
-    1. **完整名稱顯示**：
-       - **D1**: Randomization (隨機過程)
-       - **D2**: Deviations (介入偏離)
-       - **D3**: Missing Data (缺失數據)
-       - **D4**: Measurement (結果測量)
-       - **D5**: Reporting (選擇性報告)
-    2. **分組顯示**：表格依 Outcome 自動分類。
-    3. **詳盡理由**：提供繁體中文評讀理由。
+    1. **表格 (Table)**：提供詳細的中英對照欄位與繁體中文理由。
+    2. **圖表 (Plots)**：使用純英文標籤 (e.g., D1 Randomization)，避免亂碼，確保圖檔專業美觀。
+    3. **分組檢視**：自動區分不同 Outcome。
     """)
