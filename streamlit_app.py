@@ -12,7 +12,7 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Symmetric Axis Edition)")
+st.title("🧬 AI-Meta Analysis Pro (Perfect Spacing Edition)")
 st.markdown("### 整合 PICO、RoB 評讀、數據萃取與 **期刊級統計圖表**")
 
 # --- 設定 Domain 名稱對照表 ---
@@ -39,8 +39,8 @@ class MetaAnalysisEngine:
             self._clean_and_calculate_effect_sizes()
             if not self.df.empty and 'TE' in self.df.columns:
                 self._run_random_effects()
-                if len(self.df) >= 3:
-                    self._calculate_influence_diagnostics()
+                # 即使研究少也嘗試計算，避免屬性缺失錯誤
+                self._calculate_influence_diagnostics()
         except Exception as e:
             st.error(f"統計運算警告: {e}")
 
@@ -123,6 +123,7 @@ class MetaAnalysisEngine:
                 w_r = 1 / (subset['seTE']**2 + tau2_d)
                 te_d = np.sum(w_r * subset['TE']) / np.sum(w_r)
                 se_d = np.sqrt(1 / np.sum(w_r))
+                
                 hat = self.df.loc[i, 'weight'] / 100.0
                 resid = self.df.loc[i, 'TE'] - original_te
                 var_resid = self.df.loc[i, 'seTE']**2 + original_tau2
@@ -133,7 +134,7 @@ class MetaAnalysisEngine:
 
                 influence_data.append({
                     'Study ID': self.df.loc[i, 'Study ID'],
-                    'TE': self.df.loc[i, 'TE'], 
+                    'TE': self.df.loc[i, 'TE'],
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -144,7 +145,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 (Single Axis + Symmetric Scale) ---
+# --- 繪圖函式 (Single Axis + Symmetric Scale + Fixed Spacing) ---
 
 def plot_forest_professional(ma_engine):
     df = ma_engine.df
@@ -160,14 +161,18 @@ def plot_forest_professional(ma_engine):
     n_rows = n_studies + 4
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
-    # --- Layout Coordinates ---
+    # --- Layout Coordinates (微調版：拉開右側間距) ---
     x_study = 0
-    x_tx_ev = 32; x_tx_tot = 38
-    x_ctrl_ev = 46; x_ctrl_tot = 52
-    # 中間圖形稍微縮小，避免跟右邊打架
-    x_plot_start = 56; x_plot_end = 76 
-    # 右側數據拉開
-    x_rr = 84; x_ci = 92; x_wt = 100
+    x_tx_ev = 31; x_tx_tot = 37
+    x_ctrl_ev = 45; x_ctrl_tot = 51
+    
+    # 中間圖形區：縮短結束點 76 -> 73，留空間給右邊
+    x_plot_start = 55; x_plot_end = 73 
+    
+    # 右側統計區：往左移，拉開 CI 與 Weight 的距離
+    x_rr = 79      # RR 數值
+    x_ci = 89      # 95% CI (從 92 移到 89)
+    x_wt = 100     # Weight (保持最右)
     
     # --- Header ---
     y_head = n_rows - 1
@@ -195,25 +200,13 @@ def plot_forest_professional(ma_engine):
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
         center = 1.0
-        
-        # 1. 找出所有數據點
         all_v = list(vals) + list(lows) + list(ups)
-        
-        # 2. 找出極值
         min_val = min(min(all_v), pool_low)
         max_val = max(max(all_v), pool_up)
-        
-        # 3. 計算離中線 (1.0) 的最大對數距離，確保對稱
-        # dist = max( |log(min) - log(1)|, |log(max) - log(1)| )
         dist_min = abs(np.log(min_val) - np.log(1)) if min_val > 0 else 5
         dist_max = abs(np.log(max_val) - np.log(1))
-        max_dist = max(dist_min, dist_max) * 1.1 # 增加 10% buffer
-        
-        # 4. 設定新的對稱範圍
-        v_min = np.exp(-max_dist)
-        v_max = np.exp(max_dist)
-        
-        # 限制極端值以免圖形壓縮太小
+        max_dist = max(dist_min, dist_max) * 1.1 
+        v_min = np.exp(-max_dist); v_max = np.exp(max_dist)
         if v_min < 0.01: v_min = 0.01
         if v_max > 100: v_max = 100
         
@@ -221,16 +214,12 @@ def plot_forest_professional(ma_engine):
             if v <= 0: v = 0.001
             return x_plot_start + (np.log(v) - np.log(v_min)) / (np.log(v_max) - np.log(v_min)) * (x_plot_end - x_plot_start)
     else:
-        # SMD (Linear Scale)
         vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0
-        
         all_v = list(vals) + list(lows) + list(ups)
         max_dist = max(abs(min(all_v)), abs(max(all_v))) * 1.1
-        v_min = -max_dist
-        v_max = max_dist
-        
+        v_min = -max_dist; v_max = max_dist
         def transform(v):
             return x_plot_start + (v - v_min) / (v_max - v_min) * (x_plot_end - x_plot_start)
 
@@ -287,10 +276,7 @@ def plot_forest_professional(ma_engine):
     # Axis
     y_axis = 0.8
     ax.plot([x_plot_start, x_plot_end], [y_axis, y_axis], color='black', linewidth=1)
-    
-    # Generate ticks based on range
     if measure == "RR": 
-        # Adaptive ticks logic
         if v_max > 10: ticks = [0.1, 0.5, 1, 2, 10]
         elif v_max > 5: ticks = [0.2, 0.5, 1, 2, 5]
         else: ticks = [0.5, 1, 2]
@@ -330,7 +316,6 @@ def plot_leave_one_out_professional(ma_engine):
     ax.text(x_stat, y_head, "Effect Size", fontweight='bold', ha='center')
     ax.plot([0, 100], [y_head-0.4, y_head-0.4], color='black', linewidth=1)
     
-    # Symmetric Transform for Leave One Out
     if measure == "RR":
         vals = np.exp(inf_df['TE.del']); lows = np.exp(inf_df['lower.del']); ups = np.exp(inf_df['upper.del'])
         orig_val = np.exp(res['TE_pooled']); orig_low = np.exp(res['lower_pooled']); orig_up = np.exp(res['upper_pooled'])
