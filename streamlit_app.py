@@ -9,7 +9,7 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Deep Reasoning Edition)")
+st.title("🧬 AI-Meta Analysis Pro (Deep Reasoning & Grouped View)")
 st.markdown("### 整合 PICO 檢索、AI 詳盡評讀與 RoB 視覺化工具")
 
 # --- Helper Function: 繪製紅綠燈圖 (Traffic Light Plot) ---
@@ -18,11 +18,15 @@ def plot_traffic_light(df, title):
     studies = df['Study ID'].tolist()
     domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
     
+    # 動態調整高度
     fig, ax = plt.subplots(figsize=(8, len(studies) * 0.6 + 2))
     
     for y, study in enumerate(studies):
         for x, domain in enumerate(domains):
-            risk = df[df['Study ID'] == study][domain].values[0].strip()
+            # 取得風險值並去除空格
+            risk_val = df[df['Study ID'] == study][domain].values[0]
+            risk = str(risk_val).strip()
+            
             color = '#808080'
             symbol = '?'
             if 'Low' in risk: 
@@ -57,8 +61,10 @@ def plot_summary_bar(df, title):
     domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
     data = []
     for domain in domains:
-        counts = df[domain].apply(lambda x: 'Low' if 'Low' in x else ('High' if 'High' in x else 'Some concerns')).value_counts()
+        # 計算統計
+        counts = df[domain].apply(lambda x: 'Low' if 'Low' in str(x) else ('High' if 'High' in str(x) else 'Some concerns')).value_counts()
         total = len(df)
+        if total == 0: total = 1 # 避免除以零
         data.append([
             (counts.get('Low', 0) / total) * 100,
             (counts.get('Some concerns', 0) / total) * 100,
@@ -184,7 +190,6 @@ with tab2:
                 for line in lines:
                     if '|' in line and 'StudyID' not in line:
                         cols = [c.strip() for c in line.split('|')]
-                        # 確保至少抓到 9 個欄位 (含理由)
                         if len(cols) >= 9:
                             table_rows.append(cols[:9])
             except Exception as e:
@@ -193,37 +198,51 @@ with tab2:
             progress_bar.progress((i + 1) / len(uploaded_files))
         
         if table_rows:
-            # 更新 DataFrame 結構，加入 Reasoning
             df = pd.DataFrame(table_rows, columns=['Study ID', 'Outcome', 'D1', 'D2', 'D3', 'D4', 'D5', 'Overall', 'Reasoning'])
             st.session_state.rob_results = df
             status_text.text("分析完成！")
         else:
-            st.error("AI 未能產出有效數據，可能是 PDF 內容無法讀取或模型回應格式錯誤。")
+            st.error("AI 未能產出有效數據，請重試。")
 
     st.divider()
 
-    # 3. 顯示結果與視覺化
+    # 3. 顯示結果與視覺化 (這是本次修改的重點區塊)
     if st.session_state.rob_results is not None:
         df = st.session_state.rob_results
         
-        st.subheader("📋 詳細評讀數據表 (含理由)")
-        st.markdown("您可以將滑鼠移到「Reasoning」欄位查看完整內容，或點擊表格右上角放大。")
-        st.dataframe(df)
+        st.subheader("📋 詳細評讀數據表 (按 Outcome 分組)")
+        st.info("💡 滑鼠移至「Reasoning」欄位可查看完整理由。")
+
+        # --- 核心修改：依 Outcome 分組顯示 ---
+        unique_outcomes = df['Outcome'].unique()
+        
+        for outcome in unique_outcomes:
+            st.markdown(f"#### 📌 Outcome: {outcome}")
+            
+            # 篩選該 Outcome 的資料
+            subset_df = df[df['Outcome'] == outcome].reset_index(drop=True)
+            
+            # 在顯示時隱藏 'Outcome' 欄位，因為標題已經有了，讓表格更簡潔
+            display_df = subset_df.drop(columns=['Outcome'])
+            
+            st.dataframe(display_df, use_container_width=True)
+            st.markdown("---") # 分隔線
+        # -----------------------------------
 
         st.subheader("🚦 RoB 2.0 視覺化")
-        unique_outcomes = df['Outcome'].unique()
-        selected_outcome = st.selectbox("請選擇要繪製圖表的 Outcome:", unique_outcomes)
-        subset_df = df[df['Outcome'] == selected_outcome]
         
-        if not subset_df.empty:
+        selected_outcome = st.selectbox("請選擇要繪製圖表的 Outcome:", unique_outcomes)
+        viz_subset_df = df[df['Outcome'] == selected_outcome]
+        
+        if not viz_subset_df.empty:
             col_viz1, col_viz2 = st.columns(2)
             with col_viz1:
                 st.markdown("#### Traffic Light Plot")
-                fig1 = plot_traffic_light(subset_df, selected_outcome)
+                fig1 = plot_traffic_light(viz_subset_df, selected_outcome)
                 st.pyplot(fig1)
             with col_viz2:
                 st.markdown("#### Summary Plot")
-                fig2 = plot_summary_bar(subset_df, selected_outcome)
+                fig2 = plot_summary_bar(viz_subset_df, selected_outcome)
                 st.pyplot(fig2)
         else:
             st.info("該 Outcome 暫無數據。")
@@ -234,7 +253,7 @@ with tab2:
 with tab3:
     st.markdown("""
     ### 功能說明
-    1. **詳盡理由**：此版本使用 `Gemini 2.5 Pro` 模型，會在表格最後一欄提供具体的評讀理由 (Reasoning)。
-    2. **視覺化**：根據 Outcome 分別繪製紅綠燈圖與權重圖。
-    3. **多檔分析**：一次上傳多個 PDF，AI 會逐一分析。
+    1. **分組顯示**：表格現在會自動依照 Outcome 分類，方便您對照不同研究在同一指標下的表現。
+    2. **詳盡理由**：使用 `Gemini 2.5 Pro` 模型，提供繁體中文的評讀理由。
+    3. **視覺化**：紅綠燈圖與匯總圖也會依照您選擇的 Outcome 動態更新。
     """)
