@@ -98,7 +98,7 @@ with tab2:
         full_results = ""
 
         # 準備 AI 模型
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-2.5-pro')
 
         for i, file in enumerate(uploaded_files):
             status_text.text(f"正在分析第 {i+1} 篇：{file.name} ...")
