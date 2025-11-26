@@ -20,6 +20,22 @@ with st.sidebar:
     
     st.header("1. 研究主題設定")
     topic = st.text_input("研究主題", "子宮內膜癌術後使用HRT之安全性")
+
+# --- 把這段加在 Sidebar 裡面 ---
+    if api_key:
+        genai.configure(api_key=api_key)
+        if st.button("🛠️ 檢測可用模型"):
+            st.write("正在查詢您的 API 權限...")
+            try:
+                models = []
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        models.append(m.name)
+                st.success(f"找到 {len(models)} 個可用模型：")
+                st.code(models)
+            except Exception as e:
+                st.error(f"查詢失敗: {e}")
+    # -----------------------------
     
     if not api_key:
         st.warning("⚠️ 請先輸入 API Key 才能啟用 AI 功能")
