@@ -11,7 +11,7 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Final Complete Version)")
+st.title("🧬 AI-Meta Analysis Pro (Final Fixed Layout)")
 st.markdown("### 整合 PICO、RoB 評讀、數據萃取與 **期刊級統計圖表** 的全方位工具")
 
 # --- 設定 Domain 名稱對照表 ---
@@ -36,14 +36,12 @@ class MetaAnalysisEngine:
         self._calculate_influence_diagnostics()
 
     def _calculate_effect_sizes(self):
-        # 轉換數值
         cols_to_numeric = [c for c in self.df.columns if c not in ['Study ID', 'Population', 'Tx Details', 'Ctrl Details']]
         for c in cols_to_numeric:
             self.df[c] = pd.to_numeric(self.df[c], errors='coerce')
         self.df = self.df.dropna(subset=cols_to_numeric).reset_index(drop=True)
 
         if "Binary" in self.data_type:
-            # Log Risk Ratio
             a = self.df['Tx Events'] + 0.5; n1 = self.df['Tx Total'] + 0.5
             c = self.df['Ctrl Events'] + 0.5; n2 = self.df['Ctrl Total'] + 0.5
             self.df['TE'] = np.log((a/n1) / (c/n2))
@@ -51,7 +49,6 @@ class MetaAnalysisEngine:
             self.effect_label = "Risk Ratio (Log Scale)"
             self.measure = "RR"
         else:
-            # SMD
             n1 = self.df['Tx Total']; n2 = self.df['Ctrl Total']
             m1 = self.df['Tx Mean']; m2 = self.df['Ctrl Mean']
             sd1 = self.df['Tx SD']; sd2 = self.df['Ctrl SD']
@@ -62,52 +59,40 @@ class MetaAnalysisEngine:
             self.effect_label = "Std. Mean Difference"
             self.measure = "SMD"
             
-        # 計算 95% CI
         self.df['lower'] = self.df['TE'] - 1.96 * self.df['seTE']
         self.df['upper'] = self.df['TE'] + 1.96 * self.df['seTE']
 
     def _run_random_effects(self):
         k = len(self.df)
         if k <= 1: return
-        
-        # DerSimonian-Laird
         w_fixed = 1 / (self.df['seTE']**2)
         te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
         Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
         df_Q = k - 1
         C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
         tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
-        
         w_random = 1 / (self.df['seTE']**2 + tau2)
         te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
         se_random = np.sqrt(1 / np.sum(w_random))
-        
         self.results = {
             'TE_pooled': te_random, 'seTE_pooled': se_random,
-            'lower_pooled': te_random - 1.96*se_random,
-            'upper_pooled': te_random + 1.96*se_random,
+            'lower_pooled': te_random - 1.96*se_random, 'upper_pooled': te_random + 1.96*se_random,
             'tau2': tau2, 'Q': Q, 'I2': max(0, (Q - df_Q) / Q) * 100 if Q > 0 else 0,
             'weights_raw': w_random
         }
         self.df['weight'] = (w_random / np.sum(w_random)) * 100
 
     def _calculate_influence_diagnostics(self):
-        k = len(self.df)
-        res = self.results
-        original_te = res['TE_pooled']
-        original_tau2 = res['tau2']
-        
+        k = len(self.df); res = self.results
+        original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
-        
         for i in self.df.index:
-            # Leave-One-Out
             subset = self.df.drop(i)
             w_fixed = 1 / (subset['seTE']**2)
             te_fixed = np.sum(w_fixed * subset['TE']) / np.sum(w_fixed)
             Q_del = np.sum(w_fixed * (subset['TE'] - te_fixed)**2)
             C_del = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
             tau2_del = max(0, (Q_del - (k - 2)) / C_del) if C_del > 0 else 0
-            
             w_random = 1 / (subset['seTE']**2 + tau2_del)
             te_del = np.sum(w_random * subset['TE']) / np.sum(w_random)
             se_del = np.sqrt(1 / np.sum(w_random))
@@ -126,160 +111,223 @@ class MetaAnalysisEngine:
                 'tau2.del': tau2_del, 'QE.del': Q_del, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                 'TE.del': te_del, 'lower.del': te_del - 1.96 * se_del, 'upper.del': te_del + 1.96 * se_del
             })
-            
         self.influence_df = pd.DataFrame(influence_data)
 
-# --- 繪圖函式 (高解析度 & 精準對齊版) ---
+# --- 繪圖函式 ---
+
 def plot_forest_professional(ma_engine):
     df = ma_engine.df
     res = ma_engine.results
     measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
     
-    plt.rcParams.update({'font.size': 10, 'figure.dpi': 300})
+    plt.rcParams.update({'font.size': 9, 'figure.dpi': 300})
     n_studies = len(df)
     n_rows = n_studies + 4
-    fig, ax = plt.subplots(figsize=(12, n_rows * 0.4))
-    ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
-    col_study = 2
-    col_data1 = 35
-    col_data2 = 50
-    col_plot_start = 60
-    col_plot_end = 85
-    col_stats = 88
-    col_weight = 98
+    # 使用 GridSpec 將畫布切分為 3 塊: [左表] [中圖] [右表]
+    # width_ratios 控制寬度比例
+    fig = plt.figure(figsize=(14, n_rows * 0.5))
+    gs = gridspec.GridSpec(1, 3, width_ratios=[3, 2, 1.5], wspace=0)
     
-    y_header = n_rows - 1
-    ax.text(col_study, y_header, "Study", fontweight='bold', ha='left', va='center')
-    if is_binary:
-        ax.text(col_data1, y_header, "Tx\n(n/N)", fontweight='bold', ha='center', va='center')
-        ax.text(col_data2, y_header, "Ctrl\n(n/N)", fontweight='bold', ha='center', va='center')
-    else:
-        ax.text(col_data1, y_header, "Tx\n(Mean/SD)", fontweight='bold', ha='center', va='center')
-        ax.text(col_data2, y_header, "Ctrl\n(Mean/SD)", fontweight='bold', ha='center', va='center')
-    ax.text((col_plot_start + col_plot_end)/2, y_header, f"{measure} (95% CI)", fontweight='bold', ha='center', va='center')
-    ax.text(col_weight, y_header, "Weight", fontweight='bold', ha='right', va='center')
-    ax.plot([0, 100], [y_header - 0.6, y_header - 0.6], color='black', linewidth=0.8)
+    ax_left = plt.subplot(gs[0])
+    ax_mid = plt.subplot(gs[1])
+    ax_right = plt.subplot(gs[2])
+    
+    # 共用設定
+    for ax in [ax_left, ax_mid, ax_right]:
+        ax.set_ylim(0, n_rows)
+        ax.axis('off')
 
+    # --- 1. 左側數據欄 ---
+    y_header = n_rows - 1
+    ax_left.text(0, y_header, "Study", fontweight='bold', ha='left', va='center')
+    
+    if is_binary:
+        ax_left.text(0.5, y_header, "Tx\n(Events/Total)", fontweight='bold', ha='center', va='center')
+        ax_left.text(0.9, y_header, "Ctrl\n(Events/Total)", fontweight='bold', ha='center', va='center')
+        
+        for i, row in df.iterrows():
+            y = n_rows - 2 - i
+            ax_left.text(0, y, str(row['Study ID']), ha='left', va='center')
+            ax_left.text(0.5, y, f"{int(row['Tx Events'])}/{int(row['Tx Total'])}", ha='center', va='center')
+            ax_left.text(0.9, y, f"{int(row['Ctrl Events'])}/{int(row['Ctrl Total'])}", ha='center', va='center')
+            
+        # Total row
+        ax_left.text(0, 1.5, "Random Effects Model", fontweight='bold', ha='left', va='center')
+        ax_left.text(0.5, 1.5, str(int(df['Tx Total'].sum())), fontweight='bold', ha='center', va='center')
+        ax_left.text(0.9, 1.5, str(int(df['Ctrl Total'].sum())), fontweight='bold', ha='center', va='center')
+        
+    else: # Continuous
+        ax_left.text(0.5, y_header, "Tx\n(Mean/SD)", fontweight='bold', ha='center', va='center')
+        ax_left.text(0.9, y_header, "Ctrl\n(Mean/SD)", fontweight='bold', ha='center', va='center')
+        for i, row in df.iterrows():
+            y = n_rows - 2 - i
+            ax_left.text(0, y, str(row['Study ID']), ha='left', va='center')
+            ax_left.text(0.5, y, f"{row['Tx Mean']:.1f}/{row['Tx SD']:.1f}", ha='center', va='center')
+            ax_left.text(0.9, y, f"{row['Ctrl Mean']:.1f}/{row['Ctrl SD']:.1f}", ha='center', va='center')
+        ax_left.text(0, 1.5, "Random Effects Model", fontweight='bold', ha='left', va='center')
+
+    # 分隔線
+    ax_left.plot([0, 1], [y_header-0.6, y_header-0.6], color='black', linewidth=1, transform=ax_left.transAxes, clip_on=False)
+
+    # --- 2. 中間森林圖 ---
+    # 設置座標軸
+    ax_mid.axis('on')
+    ax_mid.spines['top'].set_visible(False)
+    ax_mid.spines['left'].set_visible(False)
+    ax_mid.spines['right'].set_visible(False)
+    ax_mid.get_yaxis().set_visible(False)
+    ax_mid.set_xlabel(f"{measure} (95% CI)")
+    
+    # 決定範圍
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
+        ax_mid.set_xscale('log')
         center = 1.0
-        all_vals = np.concatenate([vals, lows, ups])
-        all_vals = all_vals[~np.isnan(all_vals) & (all_vals > 0)]
-        x_min = min(min(all_vals), pool_low) * 0.8; x_max = max(max(all_vals), pool_up) * 1.2
-        if x_min < 0.01: x_min = 0.01
-        if x_max > 100: x_max = 100
-        def transform(v):
-            try:
-                if v <= 0: return 0
-                prop = (np.log(v) - np.log(x_min)) / (np.log(x_max) - np.log(x_min))
-                return col_plot_start + prop * (col_plot_end - col_plot_start)
-            except: return col_plot_start
     else:
         vals, lows, ups = df['TE'], df['lower'], df['upper']
         pool_val, pool_low, pool_up = res['TE_pooled'], res['lower_pooled'], res['upper_pooled']
         center = 0.0
-        all_vals = np.concatenate([vals, lows, ups])
-        x_min = min(min(all_vals), pool_low) - 0.5; x_max = max(max(all_vals), pool_up) + 0.5
-        def transform(v):
-            prop = (v - x_min) / (x_max - x_min)
-            return col_plot_start + prop * (col_plot_end - col_plot_start)
-
+        
+    # 繪圖
     for i, row in df.iterrows():
         y = n_rows - 2 - i
-        ax.text(col_study, y, str(row['Study ID']), ha='left', va='center')
-        if is_binary:
-            ax.text(col_data1, y, f"{int(row['Tx Events'])}/{int(row['Tx Total'])}", ha='center', va='center')
-            ax.text(col_data2, y, f"{int(row['Ctrl Events'])}/{int(row['Ctrl Total'])}", ha='center', va='center')
+        # Error Bar
+        ax_mid.plot([lows[i], ups[i]], [y, y], color='black', linewidth=1)
+        # Box
+        box_size = (row['weight'] / 100) * 0.5  # Scale box size
+        if measure == "RR":
+            ax_mid.plot(vals[i], y, 's', color='gray', markersize=5 + row['weight']/5)
         else:
-            ax.text(col_data1, y, f"{row['Tx Mean']:.1f}/{row['Tx SD']:.1f}", ha='center', va='center')
-            ax.text(col_data2, y, f"{row['Ctrl Mean']:.1f}/{row['Ctrl SD']:.1f}", ha='center', va='center')
-        val_fmt = f"{vals[i]:.2f}"; ci_fmt = f"[{lows[i]:.2f}, {ups[i]:.2f}]"; weight_fmt = f"{row['weight']:.1f}%"
-        ax.text(col_stats, y, f"{val_fmt}  {ci_fmt}", ha='right', va='center', fontsize=9)
-        ax.text(col_weight, y, weight_fmt, ha='right', va='center')
-        x = transform(vals[i]); x_l = transform(lows[i]); x_r = transform(ups[i])
-        ax.plot([x_l, x_r], [y, y], color='black', linewidth=1)
-        box_size = 0.15 + (row['weight']/100) * 0.3 
-        rect = mpatches.Rectangle((x - box_size/2, y - box_size/2), box_size, box_size, facecolor='black')
-        ax.add_patch(rect)
+            ax_mid.plot(vals[i], y, 's', color='gray', markersize=5 + row['weight']/5)
 
-    y_pool = 1.5
-    center_x = transform(center)
-    ax.plot([center_x, center_x], [1, n_rows - 1.5], color='black', linestyle='-', linewidth=0.5)
-    px = transform(pool_val); pl = transform(pool_low); pr = transform(pool_up)
-    diamond_x = [pl, px, pr, px]; diamond_y = [y_pool, y_pool + 0.3, y_pool, y_pool - 0.3]
-    ax.fill(diamond_x, diamond_y, color='red', alpha=0.5)
-    ax.text(col_study, y_pool, "Random Effects Model", fontweight='bold', ha='left', va='center')
-    if is_binary:
-        ax.text(col_data1, y_pool, str(int(df['Tx Total'].sum())), fontweight='bold', ha='center', va='center')
-        ax.text(col_data2, y_pool, str(int(df['Ctrl Total'].sum())), fontweight='bold', ha='center', va='center')
-    pool_fmt = f"{pool_val:.2f}  [{pool_low:.2f}, {pool_up:.2f}]"
-    ax.text(col_stats, y_pool, pool_fmt, fontweight='bold', ha='right', va='center')
-    ax.text(col_weight, y_pool, "100.0%", fontweight='bold', ha='right', va='center')
+    # 中線
+    ax_mid.axvline(x=center, color='black', linewidth=0.8)
     
-    y_info = 0.5
+    # 菱形 (Pooled)
+    y_pool = 1.5
+    diamond_x = [pool_low, pool_val, pool_up, pool_val]
+    diamond_y = [y_pool, y_pool + 0.3, y_pool, y_pool - 0.3]
+    ax_mid.fill(diamond_x, diamond_y, color='red', alpha=0.5)
+    
+    # Heterogeneity Info
     het_text = f"Heterogeneity: $I^2$={res['I2']:.1f}%, $\\tau^2$={res['tau2']:.3f}, $Q$={res['Q']:.1f}"
-    ax.text(col_study, y_info, het_text, ha='left', va='center', fontsize=9)
-    ax.plot([col_plot_start, col_plot_end], [y_info, y_info], color='black', linewidth=0.8)
-    ticks = [x_min, center, x_max]
-    if measure == "RR": ticks = [0.1, 0.5, 1, 2, 10]
-    for t in ticks:
-        tx = transform(t)
-        if col_plot_start <= tx <= col_plot_end:
-            ax.plot([tx, tx], [y_info, y_info + 0.15], color='black', linewidth=0.8)
-            ax.text(tx, y_info - 0.4, f"{t:.1f}", ha='center', va='center', fontsize=8)
-    ax.text(col_plot_start, y_info - 0.8, "Favours Tx", ha='left', va='center', fontsize=9)
-    ax.text(col_plot_end, y_info - 0.8, "Favours Ctrl", ha='right', va='center', fontsize=9)
+    ax_mid.text(ax_mid.get_xlim()[0], 0.5, het_text, ha='left', va='center', fontsize=8)
+
+    # --- 3. 右側統計欄 ---
+    ax_right.text(0.1, y_header, f"{measure}", fontweight='bold', ha='center', va='center')
+    ax_right.text(0.5, y_header, "95% CI", fontweight='bold', ha='center', va='center')
+    ax_right.text(0.9, y_header, "Weight", fontweight='bold', ha='center', va='center')
+    
+    for i, row in df.iterrows():
+        y = n_rows - 2 - i
+        val = np.exp(row['TE']) if measure == "RR" else row['TE']
+        low = np.exp(row['lower']) if measure == "RR" else row['lower']
+        up = np.exp(row['upper']) if measure == "RR" else row['upper']
+        
+        ax_right.text(0.1, y, f"{val:.2f}", ha='center', va='center')
+        ax_right.text(0.5, y, f"[{low:.2f}; {up:.2f}]", ha='center', va='center')
+        ax_right.text(0.9, y, f"{row['weight']:.1f}%", ha='center', va='center')
+        
+    # Pooled Row
+    ax_right.text(0.1, 1.5, f"{pool_val:.2f}", fontweight='bold', ha='center', va='center')
+    ax_right.text(0.5, 1.5, f"[{pool_low:.2f}; {pool_up:.2f}]", fontweight='bold', ha='center', va='center')
+    ax_right.text(0.9, 1.5, "100.0%", fontweight='bold', ha='center', va='center')
+    
+    ax_right.plot([0, 1], [y_header-0.6, y_header-0.6], color='black', linewidth=1, transform=ax_right.transAxes, clip_on=False)
+
+    plt.tight_layout()
     return fig
 
 def plot_leave_one_out_professional(ma_engine):
     inf_df = ma_engine.influence_df
     measure = ma_engine.measure
     res = ma_engine.results
+    
     plt.rcParams.update({'font.size': 10, 'figure.dpi': 300})
     n_studies = len(inf_df)
     n_rows = n_studies + 3
-    fig, ax = plt.subplots(figsize=(10, n_rows * 0.4))
-    ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
-    col_study = 5; col_plot_start = 45; col_plot_end = 75; col_stats = 95
-    y_header = n_rows - 1
-    ax.text(col_study, y_header, "Study Omitted", fontweight='bold', ha='left')
-    ax.text((col_plot_start+col_plot_end)/2, y_header, "Effect Size (95% CI)", fontweight='bold', ha='center')
-    ax.plot([0, 100], [y_header - 0.5, y_header - 0.5], color='black', linewidth=0.8)
     
+    # GridSpec: [Text] [Plot] [Stats]
+    fig = plt.figure(figsize=(12, n_rows * 0.5))
+    gs = gridspec.GridSpec(1, 3, width_ratios=[2, 2, 1], wspace=0)
+    
+    ax_left = plt.subplot(gs[0]); ax_mid = plt.subplot(gs[1]); ax_right = plt.subplot(gs[2])
+    for ax in [ax_left, ax_mid, ax_right]: ax.set_ylim(0, n_rows); ax.axis('off')
+    
+    # Header
+    y_header = n_rows - 1
+    ax_left.text(0, y_header, "Study Omitted", fontweight='bold', ha='left')
+    ax_right.text(0.5, y_header, f"{measure} (95% CI)", fontweight='bold', ha='center')
+    
+    # Data Prep
     if measure == "RR":
         vals = np.exp(inf_df['TE.del']); lows = np.exp(inf_df['lower.del']); ups = np.exp(inf_df['upper.del'])
-        center = 1.0; x_min, x_max = 0.1, 10
-        def transform(v): 
-            try: return col_plot_start + ((np.log(v)-np.log(x_min))/(np.log(x_max)-np.log(x_min)))*(col_plot_end-col_plot_start)
-            except: return col_plot_start
+        orig_val = np.exp(res['TE_pooled']); orig_low = np.exp(res['lower_pooled']); orig_up = np.exp(res['upper_pooled'])
+        center = 1.0
+        ax_mid.set_xscale('log')
     else:
         vals, lows, ups = inf_df['TE.del'], inf_df['lower.del'], inf_df['upper.del']
-        center = 0.0; x_min, x_max = vals.min()-0.5, vals.max()+0.5
-        def transform(v): return col_plot_start + ((v-x_min)/(x_max-x_min))*(col_plot_end-col_plot_start)
+        orig_val = res['TE_pooled']; orig_low = res['lower_pooled']; orig_up = res['upper_pooled']
+        center = 0.0
+        
+    ax_mid.axis('on'); ax_mid.spines['top'].set_visible(False); ax_mid.spines['left'].set_visible(False); ax_mid.spines['right'].set_visible(False); ax_mid.get_yaxis().set_visible(False)
+    ax_mid.axvline(x=center, color='black', linewidth=0.8)
 
+    # Plot Rows
     for i, row in inf_df.iterrows():
         y = n_rows - 2 - i
-        ax.text(col_study, y, f"Omitting {row['Study ID']}", ha='left', va='center')
-        x = transform(vals[i]); xl = transform(lows[i]); xr = transform(ups[i])
-        ax.plot([xl, xr], [y, y], color='black', linewidth=1)
-        ax.plot(x, y, 's', color='gray', markersize=5)
-        stats_txt = f"{vals[i]:.2f} [{lows[i]:.2f}, {ups[i]:.2f}]"
-        ax.text(col_stats, y, stats_txt, ha='right', va='center', fontsize=9)
+        ax_left.text(0, y, f"Omitting {row['Study ID']}", ha='left', va='center')
         
-    cx = transform(center)
-    ax.plot([cx, cx], [0.5, n_rows - 1.5], linestyle='--', color='black', linewidth=0.5)
-    orig_val = np.exp(res['TE_pooled']) if measure == "RR" else res['TE_pooled']
-    orig_low = np.exp(res['lower_pooled']) if measure == "RR" else res['lower_pooled']
-    orig_up = np.exp(res['upper_pooled']) if measure == "RR" else res['upper_pooled']
+        ax_mid.plot([lows[i], ups[i]], [y, y], color='black', linewidth=1)
+        ax_mid.plot(vals[i], y, 's', color='gray', markersize=5)
+        
+        txt = f"{vals[i]:.2f} [{lows[i]:.2f}; {ups[i]:.2f}]"
+        ax_right.text(0.5, y, txt, ha='center', va='center')
+        
+    # Original Pooled
     y_pool = 0.5
-    px, pl, pr = transform(orig_val), transform(orig_low), transform(orig_up)
-    diamond_x = [pl, px, pr, px]; diamond_y = [y_pool, y_pool+0.25, y_pool, y_pool-0.25]
-    ax.fill(diamond_x, diamond_y, color='red', alpha=0.5)
-    ax.text(col_study, y_pool, "All Studies Included", fontweight='bold', ha='left', va='center')
-    ax.text(col_stats, y_pool, f"{orig_val:.2f} [{orig_low:.2f}, {orig_up:.2f}]", fontweight='bold', ha='right', va='center')
+    diamond_x = [orig_low, orig_val, orig_up, orig_val]
+    diamond_y = [y_pool, y_pool+0.25, y_pool, y_pool-0.25]
+    ax_mid.fill(diamond_x, diamond_y, color='red', alpha=0.5)
+    ax_left.text(0, y_pool, "All Studies Included", fontweight='bold', ha='left', va='center')
+    ax_right.text(0.5, y_pool, f"{orig_val:.2f} [{orig_low:.2f}; {orig_up:.2f}]", fontweight='bold', ha='center', va='center')
+    
+    plt.tight_layout()
+    return fig
+
+def plot_funnel(ma_engine):
+    df = ma_engine.df
+    res = ma_engine.results
+    te_pooled = res['TE_pooled']
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.scatter(df['TE'], df['seTE'], color='blue', alpha=0.6, edgecolors='k', zorder=3)
+    max_se = max(df['seTE']) * 1.1
+    x_triangle = [te_pooled - 1.96*max_se, te_pooled, te_pooled + 1.96*max_se]
+    y_triangle = [max_se, 0, max_se]
+    ax.fill(x_triangle, y_triangle, color='gray', alpha=0.1, zorder=0)
+    ax.plot([te_pooled, te_pooled - 1.96*max_se], [0, max_se], color='gray', linestyle='--', linewidth=1)
+    ax.plot([te_pooled, te_pooled + 1.96*max_se], [0, max_se], color='gray', linestyle='--', linewidth=1)
+    ax.axvline(x=te_pooled, color='red', linestyle='--', linewidth=1)
+    ax.set_ylim(max_se, 0)
+    ax.set_ylabel("Standard Error")
+    ax.set_xlabel(ma_engine.effect_label)
+    ax.set_title("Funnel Plot", fontweight='bold')
+    return fig
+
+def plot_baujat(diag_df):
+    fig, ax = plt.subplots(figsize=(6, 5))
+    x_val = diag_df['rstudent'] ** 2 
+    y_val = abs(diag_df['TE'] - diag_df['TE.del'])
+    ax.scatter(x_val, y_val, color='purple', s=100, alpha=0.7)
+    for i, txt in enumerate(diag_df['Study ID']):
+        ax.annotate(txt, (x_val[i], y_val[i]), xytext=(5, 5), textcoords='offset points', fontsize=9)
+    ax.set_xlabel("Contribution to Heterogeneity")
+    ax.set_ylabel("Influence on Pooled Result")
+    ax.set_title("Baujat Plot", fontweight='bold')
+    ax.grid(True, linestyle='--', alpha=0.5)
     return fig
 
 def plot_influence_diagnostics_grid(ma_engine):
@@ -289,7 +337,7 @@ def plot_influence_diagnostics_grid(ma_engine):
                ('cook.d', "Cook's Distance", [4/k]), ('cov.r', 'Covariance Ratio', [1]),
                ('tau2.del', 'Leave-One-Out Tau²', [ma_engine.results['tau2']]), ('QE.del', 'Leave-One-Out Q', [ma_engine.results['Q'] - (k-1)]), 
                ('hat', 'Hat Values (Leverage)', [2/k]), ('weight', 'Weight (%)', [100/k])]
-    plt.rcParams.update({'font.size': 10, 'figure.dpi': 150}) # Diagnostics 不需過高 DPI
+    plt.rcParams.update({'font.size': 10, 'figure.dpi': 150}) 
     fig, axes = plt.subplots(4, 2, figsize=(12, 16))
     axes = axes.flatten()
     for i, (col, title, hlines) in enumerate(metrics):
@@ -301,6 +349,7 @@ def plot_influence_diagnostics_grid(ma_engine):
     plt.tight_layout()
     return fig
 
+# --- Helper Functions (Traffic Light & Summary) ---
 def plot_traffic_light(df, title):
     color_map = {'Low': '#2E7D32', 'Some concerns': '#F9A825', 'High': '#C62828'}
     studies = df['Study ID'].tolist()
@@ -366,7 +415,7 @@ with st.sidebar:
 # --- 分頁功能 ---
 tab1, tab2, tab3, tab4 = st.tabs(["🔍 PICO 檢索", "🤖 AI 詳盡評讀", "📊 數據萃取", "📈 統計分析"])
 
-# Tab 1, 2, 3 Logic (複製上面的即可，這裡為完整性再貼一次關鍵部分)
+# Tab 1, 2, 3 Logic (完整邏輯)
 with tab1:
     st.header("PICO 設定與 PubMed 搜尋")
     col1, col2 = st.columns(2)
@@ -494,7 +543,7 @@ with tab3:
             progress_bar.progress((i + 1) / len(files))
         if extract_rows:
             st.session_state.data_extract_results = pd.DataFrame(extract_rows, columns=cols_schema)
-            st.session_state.current_data_type = data_type # 紀錄當前數據類型給 Tab 4 用
+            st.session_state.current_data_type = data_type 
             status_text.text("萃取完成！")
         else: st.error("萃取失敗。")
     if st.session_state.data_extract_results is not None:
@@ -512,13 +561,22 @@ with tab4:
         try:
             ma = MetaAnalysisEngine(df_extract, data_type)
             
-            st.subheader("1. 🌲 專業森林圖 (High-Res Aligned)")
+            st.subheader("1. 🌲 專業森林圖 (GridSpec Aligned)")
             st.pyplot(plot_forest_professional(ma))
             
-            st.subheader("2. 📉 敏感度分析 (Leave-One-Out)")
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.subheader("2. 🌪️ 漏斗圖 (Funnel Plot)")
+                st.pyplot(plot_funnel(ma))
+            with col_d2:
+                st.subheader("3. 📊 Baujat Plot")
+                diag_df = ma.get_influence_diagnostics() # Get data first
+                st.pyplot(plot_baujat(diag_df))
+
+            st.subheader("4. 📉 敏感度分析 (Leave-One-Out)")
             st.pyplot(plot_leave_one_out_professional(ma))
             
-            st.subheader("3. 🔍 影響力診斷矩陣 (Influence Diagnostics)")
+            st.subheader("5. 🔍 影響力診斷矩陣 (Influence Diagnostics)")
             st.pyplot(plot_influence_diagnostics_grid(ma))
             
             with st.expander("查看詳細診斷數值"):
