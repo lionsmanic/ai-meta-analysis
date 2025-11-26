@@ -3,3 +3,4 @@ google-generativeai>=0.7.0
 pypdf
 pandas
 matplotlib
+scipy
