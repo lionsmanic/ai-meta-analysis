@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import matplotlib.gridspec as gridspec
+import matplotlib.lines as mlines
 from pypdf import PdfReader
 import scipy.stats as stats
 import io
@@ -12,7 +12,7 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Final Perfect Alignment)")
+st.title("🧬 AI-Meta Analysis Pro (Symmetric Axis Edition)")
 st.markdown("### 整合 PICO、RoB 評讀、數據萃取與 **期刊級統計圖表**")
 
 # --- 設定 Domain 名稱對照表 ---
@@ -39,7 +39,8 @@ class MetaAnalysisEngine:
             self._clean_and_calculate_effect_sizes()
             if not self.df.empty and 'TE' in self.df.columns:
                 self._run_random_effects()
-                self._calculate_influence_diagnostics()
+                if len(self.df) >= 3:
+                    self._calculate_influence_diagnostics()
         except Exception as e:
             st.error(f"統計運算警告: {e}")
 
@@ -107,11 +108,6 @@ class MetaAnalysisEngine:
             return
             
         k = len(self.df); res = self.results
-        # 如果研究數太少，不進行診斷
-        if k < 3:
-            self.influence_df = pd.DataFrame()
-            return
-
         original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
         
@@ -127,7 +123,6 @@ class MetaAnalysisEngine:
                 w_r = 1 / (subset['seTE']**2 + tau2_d)
                 te_d = np.sum(w_r * subset['TE']) / np.sum(w_r)
                 se_d = np.sqrt(1 / np.sum(w_r))
-                
                 hat = self.df.loc[i, 'weight'] / 100.0
                 resid = self.df.loc[i, 'TE'] - original_te
                 var_resid = self.df.loc[i, 'seTE']**2 + original_tau2
@@ -138,7 +133,7 @@ class MetaAnalysisEngine:
 
                 influence_data.append({
                     'Study ID': self.df.loc[i, 'Study ID'],
-                    'TE': self.df.loc[i, 'TE'],
+                    'TE': self.df.loc[i, 'TE'], 
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -149,7 +144,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 (Space Optimized) ---
+# --- 繪圖函式 (Single Axis + Symmetric Scale) ---
 
 def plot_forest_professional(ma_engine):
     df = ma_engine.df
@@ -157,33 +152,22 @@ def plot_forest_professional(ma_engine):
     measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
     
-    # 設定
     plt.rcParams.update({'font.size': 12, 'figure.dpi': 300, 'font.family': 'sans-serif'})
     n_studies = len(df)
     fig_height = n_studies * 0.4 + 2.5 
-    fig, ax = plt.subplots(figsize=(14, fig_height)) # 寬度維持 14
+    fig, ax = plt.subplots(figsize=(14, fig_height))
     
     n_rows = n_studies + 4
-    ax.set_ylim(0, n_rows)
-    ax.set_xlim(0, 100)
-    ax.axis('off')
+    ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
-    # --- X 座標設定 (重新分配空間以解決重疊) ---
-    # 左側數據區 (0-52)
+    # --- Layout Coordinates ---
     x_study = 0
-    x_tx_ev = 32
-    x_tx_tot = 38
-    x_ctrl_ev = 46
-    x_ctrl_tot = 52
-    
-    # 中間圖形區 (56-74) -> 稍微縮窄圖形，讓給右邊
-    x_plot_start = 56
-    x_plot_end = 74
-    
-    # 右側統計區 (78-100) -> 拉開距離
-    x_rr = 80      # 數值 (0.46)
-    x_ci = 90      # 區間 [0.19; 1.13]
-    x_wt = 100     # 權重 100.0% (靠右對齊)
+    x_tx_ev = 32; x_tx_tot = 38
+    x_ctrl_ev = 46; x_ctrl_tot = 52
+    # 中間圖形稍微縮小，避免跟右邊打架
+    x_plot_start = 56; x_plot_end = 76 
+    # 右側數據拉開
+    x_rr = 84; x_ci = 92; x_wt = 100
     
     # --- Header ---
     y_head = n_rows - 1
@@ -204,25 +188,49 @@ def plot_forest_professional(ma_engine):
     ax.text(x_rr, y_head, measure, fontweight='bold', ha='center')
     ax.text(x_ci, y_head, "95% CI", fontweight='bold', ha='center')
     ax.text(x_wt, y_head, "Weight", fontweight='bold', ha='right')
-    
     ax.plot([0, 100], [y_head-0.4, y_head-0.4], color='black', linewidth=1)
 
-    # --- Data Transformation ---
+    # --- Symmetric Data Transformation ---
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
         center = 1.0
+        
+        # 1. 找出所有數據點
         all_v = list(vals) + list(lows) + list(ups)
-        v_min = min(0.1, min(all_v)*0.8); v_max = max(10, max(all_v)*1.2)
+        
+        # 2. 找出極值
+        min_val = min(min(all_v), pool_low)
+        max_val = max(max(all_v), pool_up)
+        
+        # 3. 計算離中線 (1.0) 的最大對數距離，確保對稱
+        # dist = max( |log(min) - log(1)|, |log(max) - log(1)| )
+        dist_min = abs(np.log(min_val) - np.log(1)) if min_val > 0 else 5
+        dist_max = abs(np.log(max_val) - np.log(1))
+        max_dist = max(dist_min, dist_max) * 1.1 # 增加 10% buffer
+        
+        # 4. 設定新的對稱範圍
+        v_min = np.exp(-max_dist)
+        v_max = np.exp(max_dist)
+        
+        # 限制極端值以免圖形壓縮太小
+        if v_min < 0.01: v_min = 0.01
+        if v_max > 100: v_max = 100
         
         def transform(v):
             if v <= 0: v = 0.001
             return x_plot_start + (np.log(v) - np.log(v_min)) / (np.log(v_max) - np.log(v_min)) * (x_plot_end - x_plot_start)
     else:
+        # SMD (Linear Scale)
         vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0
-        v_min = min(vals.min(), lows.min()) - 0.5; v_max = max(vals.max(), ups.max()) + 0.5
+        
+        all_v = list(vals) + list(lows) + list(ups)
+        max_dist = max(abs(min(all_v)), abs(max(all_v))) * 1.1
+        v_min = -max_dist
+        v_max = max_dist
+        
         def transform(v):
             return x_plot_start + (v - v_min) / (v_max - v_min) * (x_plot_end - x_plot_start)
 
@@ -230,7 +238,6 @@ def plot_forest_professional(ma_engine):
     for i, row in df.iterrows():
         y = n_rows - 2 - i
         
-        # 1. Data
         ax.text(x_study, y, str(row['Study ID']), ha='left', va='center')
         
         if is_binary:
@@ -242,14 +249,14 @@ def plot_forest_professional(ma_engine):
             ax.text((x_tx_ev+x_tx_tot)/2, y, f"{row['Tx Mean']:.1f}", ha='center', va='center')
             ax.text((x_ctrl_ev+x_ctrl_tot)/2, y, f"{row['Ctrl Mean']:.1f}", ha='center', va='center')
 
-        # 2. Plot
+        # Plot
         x = transform(vals[i]); xl = transform(lows[i]); xr = transform(ups[i])
         ax.plot([xl, xr], [y, y], color='black', linewidth=1.2)
         sz = 0.3 + (row['weight']/100)*0.3
         rect = mpatches.Rectangle((x - sz/2, y - sz/2), sz, sz, facecolor='gray', alpha=0.8)
         ax.add_patch(rect)
         
-        # 3. Stats
+        # Stats
         ax.text(x_rr, y, f"{vals[i]:.2f}", ha='center', va='center')
         ax.text(x_ci, y, f"[{lows[i]:.2f}; {ups[i]:.2f}]", ha='center', va='center', fontsize=11)
         ax.text(x_wt, y, f"{row['weight']:.1f}%", ha='right', va='center')
@@ -257,18 +264,14 @@ def plot_forest_professional(ma_engine):
     # --- Pooled ---
     y_pool = 1.5
     ax.plot([0, 100], [y_pool+0.8, y_pool+0.8], color='black', linewidth=0.8)
-    
     ax.text(x_study, y_pool, "Random Effects Model", fontweight='bold', ha='left', va='center')
-    
     if is_binary:
         ax.text(x_tx_tot, y_pool, str(int(df['Tx Total'].sum())), fontweight='bold', ha='center', va='center')
         ax.text(x_ctrl_tot, y_pool, str(int(df['Ctrl Total'].sum())), fontweight='bold', ha='center', va='center')
-        
     ax.text(x_rr, y_pool, f"{pool_val:.2f}", fontweight='bold', ha='center', va='center')
     ax.text(x_ci, y_pool, f"[{pool_low:.2f}; {pool_up:.2f}]", fontweight='bold', ha='center', va='center')
     ax.text(x_wt, y_pool, "100.0%", fontweight='bold', ha='right', va='center')
     
-    # Diamond
     px = transform(pool_val); pl = transform(pool_low); pr = transform(pool_up)
     diamond = plt.Polygon([[pl, y_pool], [px, y_pool+0.3], [pr, y_pool], [px, y_pool-0.3]], color='red', alpha=0.6)
     ax.add_patch(diamond)
@@ -277,15 +280,22 @@ def plot_forest_professional(ma_engine):
     cx = transform(center)
     ax.plot([cx, cx], [0.5, n_rows-1.5], color='black', linestyle=':', linewidth=1)
     
-    # --- Footer ---
+    # Footer
     het_text = f"Heterogeneity: $I^2$={res['I2']:.1f}%, $\\tau^2$={res['tau2']:.3f}, $p$={res['p_Q']:.3f}"
     ax.text(x_study, 0.5, het_text, ha='left', va='center', fontsize=10)
     
     # Axis
     y_axis = 0.8
     ax.plot([x_plot_start, x_plot_end], [y_axis, y_axis], color='black', linewidth=1)
-    ticks = [v_min, center, v_max]
-    if measure == "RR": ticks = [0.1, 0.5, 1, 2, 10]
+    
+    # Generate ticks based on range
+    if measure == "RR": 
+        # Adaptive ticks logic
+        if v_max > 10: ticks = [0.1, 0.5, 1, 2, 10]
+        elif v_max > 5: ticks = [0.2, 0.5, 1, 2, 5]
+        else: ticks = [0.5, 1, 2]
+    else:
+        ticks = [int(v_min), 0, int(v_max)]
     
     for t in ticks:
         tx = transform(t)
@@ -313,23 +323,27 @@ def plot_leave_one_out_professional(ma_engine):
     n_rows = n_studies + 2
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
-    # Similar Coordinates
-    x_study = 0
-    x_plot_start = 45
-    x_plot_end = 75
-    x_stat = 85
-    
+    x_study = 0; x_plot_start = 45; x_plot_end = 75; x_stat = 85
     y_head = n_rows - 0.5
     ax.text(x_study, y_head, "Study Omitted", fontweight='bold', ha='left')
     ax.text((x_plot_start+x_plot_end)/2, y_head, f"{measure} (95% CI)", fontweight='bold', ha='center')
     ax.text(x_stat, y_head, "Effect Size", fontweight='bold', ha='center')
     ax.plot([0, 100], [y_head-0.4, y_head-0.4], color='black', linewidth=1)
     
+    # Symmetric Transform for Leave One Out
     if measure == "RR":
         vals = np.exp(inf_df['TE.del']); lows = np.exp(inf_df['lower.del']); ups = np.exp(inf_df['upper.del'])
         orig_val = np.exp(res['TE_pooled']); orig_low = np.exp(res['lower_pooled']); orig_up = np.exp(res['upper_pooled'])
         center = 1.0
-        v_min, v_max = 0.1, 10
+        all_v = list(vals) + list(lows) + list(ups)
+        min_val = min(min(all_v), orig_low); max_val = max(max(all_v), orig_up)
+        dist_min = abs(np.log(min_val) - np.log(1)) if min_val > 0 else 5
+        dist_max = abs(np.log(max_val) - np.log(1))
+        max_dist = max(dist_min, dist_max) * 1.1
+        v_min = np.exp(-max_dist); v_max = np.exp(max_dist)
+        if v_min < 0.01: v_min = 0.01
+        if v_max > 100: v_max = 100
+        
         def transform(v):
             if v <= 0: v = 0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
@@ -337,7 +351,9 @@ def plot_leave_one_out_professional(ma_engine):
         vals, lows, ups = inf_df['TE.del'], inf_df['lower.del'], inf_df['upper.del']
         orig_val = res['TE_pooled']; orig_low = res['lower_pooled']; orig_up = res['upper_pooled']
         center = 0.0
-        v_min, v_max = vals.min()-0.5, vals.max()+0.5
+        all_v = list(vals) + list(lows) + list(ups)
+        max_dist = max(abs(min(all_v)), abs(max(all_v))) * 1.1
+        v_min = -max_dist; v_max = max_dist
         def transform(v): return x_plot_start + (v-v_min)/(v_max-v_min)*(x_plot_end-x_plot_start)
 
     for i, row in inf_df.iterrows():
