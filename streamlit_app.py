@@ -12,8 +12,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Final Compact Edition)")
-st.markdown("### 整合 PICO、RoB 評讀、數據萃取與 **期刊級統計圖表**")
+st.title("🧬 AI-Meta Analysis Pro (Compact & Fixed)")
+st.markdown("### 整合 PICO、RoB 評讀、數據萃取與 **期刊級緊湊統計圖表**")
 
 # --- 設定 Domain 名稱對照表 ---
 DOMAIN_MAPPING = {
@@ -35,15 +35,16 @@ class MetaAnalysisEngine:
         self.df = pd.DataFrame()
         self.influence_df = pd.DataFrame()
         
+        # 執行流程 (含錯誤處理)
         try:
             self._clean_and_calculate_effect_sizes()
             if not self.df.empty and 'TE' in self.df.columns:
                 self._run_random_effects()
-                # 只有研究數量足夠才跑診斷，避免錯誤
+                # 只有當研究數 >= 3 才跑診斷
                 if len(self.df) >= 3:
                     self._calculate_influence_diagnostics()
         except Exception as e:
-            st.error(f"運算核心錯誤: {e}")
+            st.error(f"運算核心警告: {e}")
 
     def _clean_and_calculate_effect_sizes(self):
         df = self.raw_df.copy()
@@ -52,6 +53,7 @@ class MetaAnalysisEngine:
             df[c] = pd.to_numeric(df[c], errors='coerce')
         df = df.dropna(subset=cols_to_numeric).reset_index(drop=True)
         
+        # 移除無效 Total (避免除以零)
         if "Binary" in self.data_type:
             df = df[(df['Tx Total'] > 0) & (df['Ctrl Total'] > 0)].reset_index(drop=True)
         else:
@@ -106,6 +108,7 @@ class MetaAnalysisEngine:
         self.df['weight'] = (w_random / np.sum(w_random)) * 100
 
     def _calculate_influence_diagnostics(self):
+        # 防禦性編程：確保有 TE 欄位
         if self.df.empty or 'TE' not in self.df.columns: return
         k = len(self.df); res = self.results
         original_te = res['TE_pooled']; original_tau2 = res['tau2']
@@ -138,8 +141,7 @@ class MetaAnalysisEngine:
 
                 influence_data.append({
                     'Study ID': self.df.loc[i, 'Study ID'],
-                    # 關鍵修正：必須包含原始 TE 供 Baujat Plot 使用
-                    'TE': self.df.loc[i, 'TE'], 
+                    'TE': self.df.loc[i, 'TE'], # 關鍵：加入原始 TE 避免 KeyError
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -151,7 +153,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 (Compact & High-Res) ---
+# --- 繪圖函式 (Compact & Professional) ---
 
 def plot_forest_professional(ma_engine):
     df = ma_engine.df
@@ -159,16 +161,16 @@ def plot_forest_professional(ma_engine):
     measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
     
-    # 使用較小的字體和緊湊的畫布寬度
+    # 字體與解析度設定
     plt.rcParams.update({'font.size': 10, 'figure.dpi': 300, 'font.family': 'sans-serif'})
     
     n_studies = len(df)
-    fig_height = n_studies * 0.4 + 2.5 # 縮減行高
+    fig_height = n_studies * 0.4 + 2.5
     
-    # 將畫布寬度從 16 縮減為 12，使其更緊湊
-    # GridSpec: [左邊數據 (寬)] [中間圖 (窄)] [右邊統計 (窄)]
+    # GridSpec 設定 (緊湊版)
+    # 寬度設為 12，比例 [3, 2, 1.5] 讓數據與圖形靠得更近
     fig = plt.figure(figsize=(12, fig_height))
-    gs = gridspec.GridSpec(1, 3, width_ratios=[2.8, 2, 1.8], wspace=0)
+    gs = gridspec.GridSpec(1, 3, width_ratios=[3, 2, 1.5], wspace=0)
     
     ax_left = plt.subplot(gs[0]); ax_mid = plt.subplot(gs[1]); ax_right = plt.subplot(gs[2])
     
@@ -181,7 +183,8 @@ def plot_forest_professional(ma_engine):
     y_header = n_rows - 1
     ax_left.text(0, y_header, "Study", fontweight='bold', ha='left', va='center')
     
-    x_c1, x_c2 = 0.65, 0.9 # 調整欄位位置
+    # 調整 X 軸位置，讓數據靠攏
+    x_c1, x_c2 = 0.6, 0.85
     
     if is_binary:
         ax_left.text(x_c1, y_header, "Tx\n(n/N)", fontweight='bold', ha='center', va='center')
@@ -191,6 +194,7 @@ def plot_forest_professional(ma_engine):
             ax_left.text(0, y, str(row['Study ID']), ha='left', va='center')
             ax_left.text(x_c1, y, f"{int(row['Tx Events'])}/{int(row['Tx Total'])}", ha='center', va='center')
             ax_left.text(x_c2, y, f"{int(row['Ctrl Events'])}/{int(row['Ctrl Total'])}", ha='center', va='center')
+        
         ax_left.text(0, 1.5, "Random Effects Model", fontweight='bold', ha='left', va='center')
         ax_left.text(x_c1, 1.5, str(int(df['Tx Total'].sum())), fontweight='bold', ha='center', va='center')
         ax_left.text(x_c2, 1.5, str(int(df['Ctrl Total'].sum())), fontweight='bold', ha='center', va='center')
@@ -234,14 +238,15 @@ def plot_forest_professional(ma_engine):
     d_y = [y_pool, y_pool+0.25, y_pool, y_pool-0.25]
     ax_mid.fill(d_x, d_y, color='red', alpha=0.6)
     
+    # Favours Labels
     x_lim = ax_mid.get_xlim()
-    ax_mid.text(x_lim[0], 0.5, "Favours Tx", ha='left', va='center', fontsize=8)
-    ax_mid.text(x_lim[1], 0.5, "Favours Ctrl", ha='right', va='center', fontsize=8)
+    ax_mid.text(x_lim[0], 0.5, "Favours Tx", ha='left', va='center', fontsize=9)
+    ax_mid.text(x_lim[1], 0.5, "Favours Ctrl", ha='right', va='center', fontsize=9)
     
     het_text = f"Heterogeneity: $I^2$={res['I2']:.1f}%, $\\tau^2$={res['tau2']:.3f}, $p$={res['p_Q']:.3f}"
-    ax_left.text(0, 0.5, het_text, ha='left', va='center', fontsize=8)
+    ax_left.text(0, 0.5, het_text, ha='left', va='center', fontsize=9)
 
-    # 3. 右側統計
+    # 3. 右側統計 (調整文字位置避免重疊)
     ax_right.text(0.2, y_header, f"{measure}", fontweight='bold', ha='center', va='center')
     ax_right.text(0.6, y_header, "95% CI", fontweight='bold', ha='center', va='center')
     ax_right.text(0.95, y_header, "Weight", fontweight='bold', ha='center', va='center')
@@ -259,6 +264,7 @@ def plot_forest_professional(ma_engine):
     ax_right.text(0.2, 1.5, f"{pool_val:.2f}", fontweight='bold', ha='center', va='center')
     ax_right.text(0.6, 1.5, f"[{pool_low:.2f}; {pool_up:.2f}]", fontweight='bold', ha='center', va='center')
     ax_right.text(0.95, 1.5, "100.0%", fontweight='bold', ha='center', va='center')
+    
     ax_right.plot([0, 1], [y_header-0.5, y_header-0.5], color='black', linewidth=1, transform=ax_right.transAxes, clip_on=False)
 
     plt.tight_layout()
@@ -274,6 +280,7 @@ def plot_leave_one_out_professional(ma_engine):
     n_studies = len(inf_df)
     fig_height = n_studies * 0.5 + 2
     
+    # 這裡也使用緊湊佈局 [2.5, 2, 1.5]
     fig = plt.figure(figsize=(10, fig_height))
     gs = gridspec.GridSpec(1, 3, width_ratios=[2.5, 2, 1.5], wspace=0)
     
@@ -285,7 +292,6 @@ def plot_leave_one_out_professional(ma_engine):
     y_head = n_rows - 0.5
     ax_left.text(0, y_head, "Study Omitted", fontweight='bold', ha='left')
     ax_right.text(0.5, y_head, f"{measure} (95% CI)", fontweight='bold', ha='center')
-    ax_mid.plot([0, 100], [y_head, y_head], color='black', linewidth=0) # placeholder
     
     if measure == "RR":
         vals = np.exp(inf_df['TE.del']); lows = np.exp(inf_df['lower.del']); ups = np.exp(inf_df['upper.del'])
@@ -295,7 +301,7 @@ def plot_leave_one_out_professional(ma_engine):
         vals, lows, ups = inf_df['TE.del'], inf_df['lower.del'], inf_df['upper.del']
         orig_val = res['TE_pooled']; orig_low = res['lower_pooled']; orig_up = res['upper_pooled']
         center = 0.0
-    
+        
     ax_mid.axis('on'); ax_mid.spines['top'].set_visible(False); ax_mid.spines['left'].set_visible(False)
     ax_mid.spines['right'].set_visible(False); ax_mid.get_yaxis().set_visible(False)
     ax_mid.axvline(x=center, color='black', linewidth=0.8)
@@ -318,6 +324,7 @@ def plot_leave_one_out_professional(ma_engine):
     
     for ax in [ax_left, ax_right]:
         ax.plot([0, 1], [y_head-0.4, y_head-0.4], color='black', linewidth=1, transform=ax.transAxes, clip_on=False)
+    
     plt.tight_layout()
     return fig
 
@@ -325,7 +332,7 @@ def transform_none(v): return v
 
 def plot_funnel(ma_engine):
     df = ma_engine.df; res = ma_engine.results; te_pooled = res['TE_pooled']
-    plt.rcParams.update({'font.size': 10, 'figure.dpi': 150})
+    plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.scatter(df['TE'], df['seTE'], color='blue', alpha=0.6, edgecolors='k', zorder=3)
     max_se = max(df['seTE']) * 1.1
@@ -343,9 +350,10 @@ def plot_funnel(ma_engine):
 
 def plot_baujat(diag_df):
     if diag_df.empty: return None
-    plt.rcParams.update({'font.size': 10, 'figure.dpi': 150})
+    plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
     fig, ax = plt.subplots(figsize=(6, 5))
     x = diag_df['rstudent'] ** 2 
+    # 修復：確保使用正確的 TE 欄位
     y = abs(diag_df['TE'] - diag_df['TE.del'])
     ax.scatter(x, y, color='purple', s=80, alpha=0.7)
     for i, txt in enumerate(diag_df['Study ID']):
@@ -364,7 +372,7 @@ def plot_influence_diagnostics_grid(ma_engine):
                ('cook.d', "Cook's Distance", [4/k]), ('cov.r', 'Covariance Ratio', [1]),
                ('tau2.del', 'Leave-One-Out Tau²', [ma_engine.results['tau2']]), ('QE.del', 'Leave-One-Out Q', [ma_engine.results['Q'] - (k-1)]), 
                ('hat', 'Hat Values', [2/k]), ('weight', 'Weight (%)', [100/k])]
-    plt.rcParams.update({'font.size': 8, 'figure.dpi': 150})
+    plt.rcParams.update({'font.size': 8, 'figure.dpi': 200})
     fig, axes = plt.subplots(4, 2, figsize=(12, 14))
     axes = axes.flatten()
     for i, (col, title, hlines) in enumerate(metrics):
@@ -588,7 +596,7 @@ with tab4:
         ma = MetaAnalysisEngine(df_extract, data_type)
         
         if ma.df.empty:
-            st.error("有效數據為空，無法進行分析。")
+            st.error("有效數據為空，無法進行分析。請檢查數據萃取結果。")
         else:
             st.subheader("1. 🌲 專業森林圖")
             st.pyplot(plot_forest_professional(ma))
