@@ -13,8 +13,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Smart Search Strategy)")
-st.markdown("### 整合 **MeSH 智能檢索 (含 Study Type)** ➔ 文獻篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Smart Search v14.0)")
+st.markdown("### 整合 **精準 PICO 檢索 (Free Text 保留)** ➔ PMID 篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
 # --- 設定 Entrez ---
 Entrez.email = "researcher@example.com" 
@@ -158,7 +158,8 @@ def plot_forest_professional(ma_engine):
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
     x_study = 0; x_tx_ev = 31; x_tx_tot = 37; x_ctrl_ev = 45; x_ctrl_tot = 51
-    x_plot_start = 55; x_plot_end = 73; x_rr = 79; x_ci = 89; x_wt = 100
+    x_plot_start = 55; x_plot_end = 73 
+    x_rr = 79; x_ci = 89; x_wt = 100
     
     y_head = n_rows - 1
     ax.text(x_study, y_head, "Study", fontweight='bold', ha='left')
@@ -191,7 +192,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals = df['TE']; lows = df['lower']; ups = df['upper']
+        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -447,9 +448,14 @@ with tab1:
         if t_no_review: filters.append('Exclude Reviews')
         filter_text = ", ".join(filters) if filters else "None"
         mesh_prompt = f"""
-        Act as a PubMed Search Expert. Input: P: {p_input}, I: {i_input}, C: {c_input}, O: {o1_input}, {o2_input}. 
+        Act as a PubMed Search Expert. 
+        Input: P: {p_input}, I: {i_input}, C: {c_input}, O: {o1_input}, {o2_input}. 
         Filters: {filter_text}. 
-        Task: 1. Identify MeSH Terms. 2. List synonyms. 3. Construct a valid PubMed Boolean Query string including filters.
+        Task: 
+        1. Identify MeSH Terms. 
+        2. List synonyms. 
+        3. Construct a valid PubMed Boolean Query string including filters.
+        IMPORTANT: If no MeSH term exists for an Outcome, USE THE FREE TEXT with [Title/Abstract]. Do NOT omit user's outcomes.
         Format: MeSH P: ... MeSH I: ... Query: ...
         """
         try:
