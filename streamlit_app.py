@@ -13,10 +13,10 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Full Characteristics Extraction)")
-st.markdown("### 整合 PICO 檢索 ➔ **PMID 智能篩選 (完整 PICO+T 表格)** ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Advanced PICO Edition)")
+st.markdown("### 整合 **細緻化 PICO 檢索** ➔ PMID 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
-# --- 設定 Entrez (請填寫您的 Email 以符合 NCBI 規範) ---
+# --- 設定 Entrez ---
 Entrez.email = "researcher@example.com" 
 
 # --- 設定 Domain 名稱對照表 ---
@@ -98,7 +98,6 @@ class MetaAnalysisEngine:
         w_random = 1 / (self.df['seTE']**2 + tau2)
         te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
         se_random = np.sqrt(1 / np.sum(w_random))
-        
         self.results = {
             'TE_pooled': te_random, 'seTE_pooled': se_random,
             'lower_pooled': te_random - 1.96*se_random, 'upper_pooled': te_random + 1.96*se_random,
@@ -111,11 +110,8 @@ class MetaAnalysisEngine:
             self.influence_df = pd.DataFrame()
             return
         k = len(self.df); res = self.results
-        if k < 3: return
-
         original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
-        
         for i in self.df.index:
             try:
                 subset = self.df.drop(i)
@@ -128,7 +124,6 @@ class MetaAnalysisEngine:
                 w_r = 1 / (subset['seTE']**2 + tau2_d)
                 te_d = np.sum(w_r * subset['TE']) / np.sum(w_r)
                 se_d = np.sqrt(1 / np.sum(w_r))
-                
                 hat = self.df.loc[i, 'weight'] / 100.0
                 resid = self.df.loc[i, 'TE'] - original_te
                 var_resid = self.df.loc[i, 'seTE']**2 + original_tau2
@@ -136,10 +131,9 @@ class MetaAnalysisEngine:
                 dffits = np.sqrt(hat / (1 - hat)) * rstudent if hat < 1 else 0
                 cook_d = (rstudent**2 * hat) / (1 - hat) if hat < 1 else 0
                 cov_r = (se_d**2) / (res['seTE_pooled']**2)
-
                 influence_data.append({
                     'Study ID': self.df.loc[i, 'Study ID'],
-                    'TE': self.df.loc[i, 'TE'],
+                    'TE': self.df.loc[i, 'TE'], 
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -150,7 +144,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 ---
+# --- 繪圖函式 (Fixed Layout) ---
 def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
@@ -197,7 +191,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
+        vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -435,23 +429,44 @@ with tab1:
     st.header("PICO 設定與 PubMed 搜尋")
     col1, col2 = st.columns(2)
     with col1:
-        p_input = st.text_area("P (Patient)", "Endometrial Neoplasms, Survivors", key="p_input")
-        i_input = st.text_area("I (Intervention)", "Hormone Replacement Therapy", key="i_input")
+        st.subheader("Population & Intervention")
+        p_input = st.text_area("P (Patient)", "Endometrial Neoplasms, Survivors", key="p_input", height=100)
+        i_input = st.text_area("I (Intervention)", "Hormone Replacement Therapy", key="i_input", height=100)
     with col2:
-        o_input = st.text_area("O (Outcome)", "Recurrence, Menopause Symptoms", key="o_input")
-        t_filter = st.checkbox("排除 Review 文章", value=True)
+        st.subheader("Comparison & Outcomes")
+        c_input = st.text_area("C (Comparison)", "Placebo, Non-hormonal therapy", key="c_input", height=68)
+        o1_input = st.text_area("O (Primary Outcome)", "Menopausal symptoms relief", key="o1_input", height=68)
+        o2_input = st.text_area("O (Secondary Outcome)", "Cancer recurrence", key="o2_input", height=68)
+    
+    st.subheader("Study Design (Filters)")
+    c1, c2 = st.columns(2)
+    with c1: t_rct = st.checkbox("限定 RCT (Randomized Controlled Trial)", value=False)
+    with c2: t_no_review = st.checkbox("排除 Review 文章", value=True)
+
     if st.button("生成 PubMed 搜尋字串"):
-        def clean(text): return "(" + " OR ".join([f'"{t.strip()}"' for t in text.split(',') if t.strip()]) + ")"
-        q_p, q_i, q_o = clean(p_input), clean(i_input), clean(o_input)
-        review_filter = ' NOT "Review"[Publication Type]' if t_filter else ""
-        final_query = f"{q_p} AND {q_i} AND {q_o}{review_filter}"
-        st.code(final_query, language="text")
-        st.markdown(f"👉 [點此前往 PubMed 搜尋](https://pubmed.ncbi.nlm.nih.gov/?term={final_query})")
+        def clean(text):
+            if not text.strip(): return ""
+            return "(" + " OR ".join([f'"{t.strip()}"' for t in text.split(',') if t.strip()]) + ")"
+        
+        parts = [clean(p_input), clean(i_input), clean(c_input)]
+        
+        # Outcomes OR logic
+        o_terms = []
+        if o1_input.strip(): o_terms.extend([t.strip() for t in o1_input.split(',')])
+        if o2_input.strip(): o_terms.extend([t.strip() for t in o2_input.split(',')])
+        q_o = "(" + " OR ".join([f'"{t}"' for t in o_terms]) + ")" if o_terms else ""
+        if q_o: parts.append(q_o)
+        
+        base_query = " AND ".join([p for p in parts if p])
+        if t_rct: base_query += ' AND "Randomized Controlled Trial"[Publication Type]'
+        if t_no_review: base_query += ' NOT "Review"[Publication Type]'
+        
+        st.code(base_query, language="text")
+        st.markdown(f"👉 [點此前往 PubMed 搜尋](https://pubmed.ncbi.nlm.nih.gov/?term={base_query})")
 
 # Tab 2: PMID Screening
 with tab2:
     st.header("📂 智能文獻篩選 (PMID Screening)")
-    st.markdown("輸入 PubMed ID (PMID)，AI 將自動抓取摘要並篩選符合 PICO 的文獻。")
     pmid_input = st.text_area("請輸入 PMIDs (以逗號或換行分隔)", "16490324, 16380290, 10793055, 2307412", height=150)
     if 'included_pmids' not in st.session_state: st.session_state.included_pmids = []
     
@@ -466,6 +481,11 @@ with tab2:
                 handle = Entrez.efetch(db="pubmed", id=pmid_list, rettype="medline", retmode="text")
                 records = handle.read().split('\n\n')
                 
+                # Context from Tab 1
+                ctx_p = st.session_state.get('p_input', ''); ctx_i = st.session_state.get('i_input', '')
+                ctx_c = st.session_state.get('c_input', ''); ctx_o1 = st.session_state.get('o1_input', '')
+                ctx_o2 = st.session_state.get('o2_input', '')
+
                 for i, record in enumerate(records):
                     if not record.strip(): continue
                     pmid_val = "N/A"; title = "N/A"; abstract = ""; authors = []; year = "N/A"; journal = "N/A"
@@ -481,10 +501,13 @@ with tab2:
                     status_text.text(f"正在篩選: {pmid_val}...")
                     
                     prompt = f"""
-                    Role: Systematic Reviewer. Context: P:{p_input}, I:{i_input}, O:{o_input}
-                    Task: Screen this study based on abstract.
+                    Role: Systematic Reviewer. 
+                    Context: P:{ctx_p}, I:{ctx_i}, C:{ctx_c}, O1:{ctx_o1}, O2:{ctx_o2}
+                    Task: Screen this study.
                     Requirements:
-                    1. Status: INCLUDED or EXCLUDED. 2. Reason: Traditional Chinese. 3. Extract: P, I, C, O1(Primary), O2(Secondary), T(Type).
+                    1. Status: INCLUDED or EXCLUDED. 
+                    2. Reason: Traditional Chinese.
+                    3. Extract: P, I, C, O1, O2, T.
                     Format: Single line separated by pipes: STATUS | Reason | P | I | C | O1 | O2 | T
                     Text: {title}\n{abstract}
                     """
@@ -510,16 +533,21 @@ with tab3:
     st.header("🤖 RoB 2.0 評讀")
     if 'rob_results' not in st.session_state: st.session_state.rob_results = None
     if 'uploaded_files' not in st.session_state: st.session_state.uploaded_files = []
-    if 'rob_primary' not in st.session_state: st.session_state.rob_primary = "Menopausal symptoms relief"
-    if 'rob_secondary' not in st.session_state: st.session_state.rob_secondary = "Cancer recurrence"
+    
+    # Defaults from Tab 1
+    def_o1 = st.session_state.get('o1_input', "Menopausal symptoms relief")
+    def_o2 = st.session_state.get('o2_input', "Cancer recurrence")
+
     col_file, col_outcome = st.columns([1, 1])
     with col_file:
         uploaded_files = st.file_uploader("上傳納入的 PDF 全文", type="pdf", accept_multiple_files=True, key="rob_uploader")
         if uploaded_files: st.session_state.uploaded_files = uploaded_files
     with col_outcome:
-        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.rob_primary, key="rob_primary_input")
-        secondary_outcome = st.text_input("次要 Outcome", value=st.session_state.rob_secondary, key="rob_secondary_input")
-        st.session_state.rob_primary = primary_outcome; st.session_state.rob_secondary = secondary_outcome
+        primary_outcome = st.text_input("主要 Outcome", value=def_o1, key="rob_primary_input")
+        secondary_outcome = st.text_input("次要 Outcome", value=def_o2, key="rob_secondary_input")
+        st.session_state.rob_primary = primary_outcome
+        st.session_state.rob_secondary = secondary_outcome
+
     if st.button("🚀 開始 RoB 評讀") and api_key and uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); table_rows = []
         for i, file in enumerate(uploaded_files):
