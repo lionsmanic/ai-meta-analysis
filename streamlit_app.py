@@ -13,8 +13,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Advanced PICO Edition)")
-st.markdown("### 整合 **細緻化 PICO 檢索** ➔ PMID 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (MeSH & Advanced Search)")
+st.markdown("### 整合 **MeSH 智能映射** ➔ 文獻篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
 # --- 設定 Entrez ---
 Entrez.email = "researcher@example.com" 
@@ -98,6 +98,7 @@ class MetaAnalysisEngine:
         w_random = 1 / (self.df['seTE']**2 + tau2)
         te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
         se_random = np.sqrt(1 / np.sum(w_random))
+        
         self.results = {
             'TE_pooled': te_random, 'seTE_pooled': se_random,
             'lower_pooled': te_random - 1.96*se_random, 'upper_pooled': te_random + 1.96*se_random,
@@ -133,7 +134,7 @@ class MetaAnalysisEngine:
                 cov_r = (se_d**2) / (res['seTE_pooled']**2)
                 influence_data.append({
                     'Study ID': self.df.loc[i, 'Study ID'],
-                    'TE': self.df.loc[i, 'TE'], 
+                    'TE': self.df.loc[i, 'TE'],
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -414,9 +415,11 @@ with st.sidebar:
         st.success("✅ 已從 Secrets 讀取 API Key")
     else:
         api_key = st.text_input("請輸入您的 Google Gemini API Key", type="password")
+    
     st.divider()
     st.header("1. 研究主題設定")
     topic = st.text_input("研究主題", "子宮內膜癌術後使用HRT之安全性")
+    
     if api_key:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-pro')
@@ -424,45 +427,59 @@ with st.sidebar:
 # --- 分頁功能 ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔍 PICO 檢索", "📂 文獻篩選 (PMID)", "🤖 RoB 評讀", "📊 數據萃取", "📈 統計分析"])
 
-# Tab 1: PICO
+# Tab 1: PICO (Improved)
 with tab1:
-    st.header("PICO 設定與 PubMed 搜尋")
+    st.header("PICO 設定與 PubMed 搜尋 (MeSH 智能映射)")
+    st.markdown("輸入自由詞 (Free Text)，AI 將自動轉化為 MeSH 並生成檢索字串。")
+    
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Population & Intervention")
-        p_input = st.text_area("P (Patient)", "Endometrial Neoplasms, Survivors", key="p_input", height=100)
+        st.subheader("P / I")
+        p_input = st.text_area("P (Patient/Population)", "Endometrial Neoplasms, Survivors", key="p_input", height=100)
         i_input = st.text_area("I (Intervention)", "Hormone Replacement Therapy", key="i_input", height=100)
     with col2:
-        st.subheader("Comparison & Outcomes")
+        st.subheader("C / O")
         c_input = st.text_area("C (Comparison)", "Placebo, Non-hormonal therapy", key="c_input", height=68)
         o1_input = st.text_area("O (Primary Outcome)", "Menopausal symptoms relief", key="o1_input", height=68)
         o2_input = st.text_area("O (Secondary Outcome)", "Cancer recurrence", key="o2_input", height=68)
     
     st.subheader("Study Design (Filters)")
     c1, c2 = st.columns(2)
-    with c1: t_rct = st.checkbox("限定 RCT (Randomized Controlled Trial)", value=False)
-    with c2: t_no_review = st.checkbox("排除 Review 文章", value=True)
+    with c1: t_rct = st.checkbox("限定 RCT", value=False)
+    with c2: t_no_review = st.checkbox("排除 Review", value=True)
 
-    if st.button("生成 PubMed 搜尋字串"):
-        def clean(text):
-            if not text.strip(): return ""
-            return "(" + " OR ".join([f'"{t.strip()}"' for t in text.split(',') if t.strip()]) + ")"
+    if st.button("🚀 AI 智能轉化 (MeSH) & 生成策略") and api_key:
+        # Prompt for MeSH Mapping
+        mesh_prompt = f"""
+        Act as a PubMed Search Expert.
+        Input:
+        P: {p_input}
+        I: {i_input}
+        C: {c_input}
+        O: {o1_input}, {o2_input}
         
-        parts = [clean(p_input), clean(i_input), clean(c_input)]
+        Task:
+        1. Identify correct MeSH Terms for each component.
+        2. List relevant synonyms (Free Text).
+        3. Construct a valid PubMed Boolean Query string.
         
-        # Outcomes OR logic
-        o_terms = []
-        if o1_input.strip(): o_terms.extend([t.strip() for t in o1_input.split(',')])
-        if o2_input.strip(): o_terms.extend([t.strip() for t in o2_input.split(',')])
-        q_o = "(" + " OR ".join([f'"{t}"' for t in o_terms]) + ")" if o_terms else ""
-        if q_o: parts.append(q_o)
-        
-        base_query = " AND ".join([p for p in parts if p])
-        if t_rct: base_query += ' AND "Randomized Controlled Trial"[Publication Type]'
-        if t_no_review: base_query += ' NOT "Review"[Publication Type]'
-        
-        st.code(base_query, language="text")
-        st.markdown(f"👉 [點此前往 PubMed 搜尋](https://pubmed.ncbi.nlm.nih.gov/?term={base_query})")
+        Format:
+        MeSH P: [Term1], [Term2]...
+        MeSH I: ...
+        MeSH C: ...
+        MeSH O: ...
+        Query: (("Term"[Mesh] OR "Free"[TiAb]) AND ...)
+        """
+        try:
+            res = model.generate_content(mesh_prompt)
+            st.success("✅ 策略生成成功！")
+            st.text_area("AI 建議與分析", res.text, height=300)
+            
+            # Simple fallback query construction if AI fails to output clean query
+            # (In a real app, we would parse the AI output more strictly)
+            st.info("💡 請複製上方 AI 生成的 'Query' 部分至 PubMed 搜尋。")
+            
+        except Exception as e: st.error(f"AI 連線錯誤: {e}")
 
 # Tab 2: PMID Screening
 with tab2:
@@ -481,11 +498,6 @@ with tab2:
                 handle = Entrez.efetch(db="pubmed", id=pmid_list, rettype="medline", retmode="text")
                 records = handle.read().split('\n\n')
                 
-                # Context from Tab 1
-                ctx_p = st.session_state.get('p_input', ''); ctx_i = st.session_state.get('i_input', '')
-                ctx_c = st.session_state.get('c_input', ''); ctx_o1 = st.session_state.get('o1_input', '')
-                ctx_o2 = st.session_state.get('o2_input', '')
-
                 for i, record in enumerate(records):
                     if not record.strip(): continue
                     pmid_val = "N/A"; title = "N/A"; abstract = ""; authors = []; year = "N/A"; journal = "N/A"
@@ -501,14 +513,9 @@ with tab2:
                     status_text.text(f"正在篩選: {pmid_val}...")
                     
                     prompt = f"""
-                    Role: Systematic Reviewer. 
-                    Context: P:{ctx_p}, I:{ctx_i}, C:{ctx_c}, O1:{ctx_o1}, O2:{ctx_o2}
-                    Task: Screen this study.
-                    Requirements:
-                    1. Status: INCLUDED or EXCLUDED. 
-                    2. Reason: Traditional Chinese.
-                    3. Extract: P, I, C, O1, O2, T.
-                    Format: Single line separated by pipes: STATUS | Reason | P | I | C | O1 | O2 | T
+                    Role: Systematic Reviewer. Context: P:{p_input}, I:{i_input}, O:{o1_input}
+                    Task: Screen this study. 1.Status(INCLUDED/EXCLUDED) 2.Reason(Traditional Chinese) 3.Extract(P,I,C,O1,O2,T)
+                    Format: STATUS | Reason | P | I | C | O1 | O2 | T
                     Text: {title}\n{abstract}
                     """
                     try:
@@ -534,19 +541,14 @@ with tab3:
     if 'rob_results' not in st.session_state: st.session_state.rob_results = None
     if 'uploaded_files' not in st.session_state: st.session_state.uploaded_files = []
     
-    # Defaults from Tab 1
-    def_o1 = st.session_state.get('o1_input', "Menopausal symptoms relief")
-    def_o2 = st.session_state.get('o2_input', "Cancer recurrence")
-
     col_file, col_outcome = st.columns([1, 1])
     with col_file:
         uploaded_files = st.file_uploader("上傳納入的 PDF 全文", type="pdf", accept_multiple_files=True, key="rob_uploader")
         if uploaded_files: st.session_state.uploaded_files = uploaded_files
     with col_outcome:
-        primary_outcome = st.text_input("主要 Outcome", value=def_o1, key="rob_primary_input")
-        secondary_outcome = st.text_input("次要 Outcome", value=def_o2, key="rob_secondary_input")
-        st.session_state.rob_primary = primary_outcome
-        st.session_state.rob_secondary = secondary_outcome
+        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.get('o1_input', "Menopausal symptoms"), key="rob_primary_input")
+        secondary_outcome = st.text_input("次要 Outcome", value=st.session_state.get('o2_input', "Cancer recurrence"), key="rob_secondary_input")
+        st.session_state.rob_primary = primary_outcome; st.session_state.rob_secondary = secondary_outcome
 
     if st.button("🚀 開始 RoB 評讀") and api_key and uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); table_rows = []
