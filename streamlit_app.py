@@ -13,8 +13,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Smart Screening Edition)")
-st.markdown("### 整合 PICO 檢索 ➔ **PMID 智能篩選 (含摘要)** ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Full Characteristics Extraction)")
+st.markdown("### 整合 PICO 檢索 ➔ **PMID 智能篩選 (完整 PICO+T 表格)** ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
 # --- 設定 Entrez (請填寫您的 Email 以符合 NCBI 規範) ---
 Entrez.email = "researcher@example.com" 
@@ -38,22 +38,28 @@ class MetaAnalysisEngine:
         self.results = {}
         self.df = pd.DataFrame()
         self.influence_df = pd.DataFrame()
+        
         try:
             self._clean_and_calculate_effect_sizes()
             if not self.df.empty and 'TE' in self.df.columns:
                 self._run_random_effects()
-                if len(self.df) >= 3: self._calculate_influence_diagnostics()
-        except Exception as e: st.error(f"統計運算警告: {e}")
+                if len(self.df) >= 3:
+                    self._calculate_influence_diagnostics()
+        except Exception as e:
+            st.error(f"統計運算警告: {e}")
 
     def _clean_and_calculate_effect_sizes(self):
         df = self.raw_df.copy()
         cols_to_numeric = [c for c in df.columns if c not in ['Study ID', 'Population', 'Tx Details', 'Ctrl Details']]
-        for c in cols_to_numeric: df[c] = pd.to_numeric(df[c], errors='coerce')
+        for c in cols_to_numeric:
+            df[c] = pd.to_numeric(df[c], errors='coerce')
         df = df.dropna(subset=cols_to_numeric).reset_index(drop=True)
+        
         if "Binary" in self.data_type:
             df = df[(df['Tx Total'] > 0) & (df['Ctrl Total'] > 0)].reset_index(drop=True)
         else:
             df = df[(df['Tx Total'] > 0) & (df['Ctrl Total'] > 0)].reset_index(drop=True)
+
         if df.empty: return 
 
         if "Binary" in self.data_type:
@@ -61,7 +67,8 @@ class MetaAnalysisEngine:
             c = df['Ctrl Events'] + 0.5; n2 = df['Ctrl Total'] + 0.5
             df['TE'] = np.log((a/n1) / (c/n2))
             df['seTE'] = np.sqrt(1/a - 1/n1 + 1/c - 1/n2)
-            self.effect_label = "Risk Ratio"; self.measure = "RR"
+            self.effect_label = "Risk Ratio"
+            self.measure = "RR"
         else:
             n1 = df['Tx Total']; n2 = df['Ctrl Total']
             m1 = df['Tx Mean']; m2 = df['Ctrl Mean']
@@ -70,14 +77,20 @@ class MetaAnalysisEngine:
             sd_pooled = np.sqrt(((n1 - 1) * sd1**2 + (n2 - 1) * sd2**2) / (n1 + n2 - 2))
             df['TE'] = md / sd_pooled
             df['seTE'] = np.sqrt((n1 + n2) / (n1 * n2) + (df['TE']**2) / (2 * (n1 + n2)))
-            self.effect_label = "Std. Mean Difference"; self.measure = "SMD"
-        df['lower'] = df['TE'] - 1.96 * df['seTE']; df['upper'] = df['TE'] + 1.96 * df['seTE']
+            self.effect_label = "Std. Mean Difference"
+            self.measure = "SMD"
+            
+        df['lower'] = df['TE'] - 1.96 * df['seTE']
+        df['upper'] = df['TE'] + 1.96 * df['seTE']
         self.df = df
 
     def _run_random_effects(self):
-        k = len(self.df); w_fixed = 1 / (self.df['seTE']**2)
+        k = len(self.df)
+        if k <= 1: return
+        w_fixed = 1 / (self.df['seTE']**2)
         te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
-        Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2); df_Q = k - 1
+        Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
+        df_Q = k - 1
         p_Q = 1 - stats.chi2.cdf(Q, df_Q)
         C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
         tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
@@ -85,48 +98,74 @@ class MetaAnalysisEngine:
         w_random = 1 / (self.df['seTE']**2 + tau2)
         te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
         se_random = np.sqrt(1 / np.sum(w_random))
-        self.results = {'TE_pooled': te_random, 'seTE_pooled': se_random, 'lower_pooled': te_random - 1.96*se_random,
-                        'upper_pooled': te_random + 1.96*se_random, 'tau2': tau2, 'Q': Q, 'I2': I2, 'p_Q': p_Q, 'weights_raw': w_random}
+        
+        self.results = {
+            'TE_pooled': te_random, 'seTE_pooled': se_random,
+            'lower_pooled': te_random - 1.96*se_random, 'upper_pooled': te_random + 1.96*se_random,
+            'tau2': tau2, 'Q': Q, 'I2': I2, 'p_Q': p_Q, 'weights_raw': w_random
+        }
         self.df['weight'] = (w_random / np.sum(w_random)) * 100
 
     def _calculate_influence_diagnostics(self):
-        if self.df.empty or 'TE' not in self.df.columns: return
-        k = len(self.df); res = self.results; original_te = res['TE_pooled']; original_tau2 = res['tau2']
+        if self.df.empty or 'TE' not in self.df.columns: 
+            self.influence_df = pd.DataFrame()
+            return
+        k = len(self.df); res = self.results
+        if k < 3: return
+
+        original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
+        
         for i in self.df.index:
             try:
                 subset = self.df.drop(i)
                 if len(subset) == 0: continue
-                w_f = 1 / (subset['seTE']**2); te_f = np.sum(w_f * subset['TE']) / np.sum(w_f)
-                Q_d = np.sum(w_f * (subset['TE'] - te_f)**2); C_d = np.sum(w_f) - np.sum(w_f**2) / np.sum(w_f)
+                w_f = 1 / (subset['seTE']**2)
+                te_f = np.sum(w_f * subset['TE']) / np.sum(w_f)
+                Q_d = np.sum(w_f * (subset['TE'] - te_f)**2)
+                C_d = np.sum(w_f) - np.sum(w_f**2) / np.sum(w_f)
                 tau2_d = max(0, (Q_d - (k - 2)) / C_d) if C_d > 0 else 0
                 w_r = 1 / (subset['seTE']**2 + tau2_d)
-                te_d = np.sum(w_r * subset['TE']) / np.sum(w_r); se_d = np.sqrt(1 / np.sum(w_r))
-                hat = self.df.loc[i, 'weight'] / 100.0; resid = self.df.loc[i, 'TE'] - original_te
-                var_resid = self.df.loc[i, 'seTE']**2 + original_tau2; rstudent = resid / np.sqrt(var_resid)
+                te_d = np.sum(w_r * subset['TE']) / np.sum(w_r)
+                se_d = np.sqrt(1 / np.sum(w_r))
+                
+                hat = self.df.loc[i, 'weight'] / 100.0
+                resid = self.df.loc[i, 'TE'] - original_te
+                var_resid = self.df.loc[i, 'seTE']**2 + original_tau2
+                rstudent = resid / np.sqrt(var_resid)
                 dffits = np.sqrt(hat / (1 - hat)) * rstudent if hat < 1 else 0
                 cook_d = (rstudent**2 * hat) / (1 - hat) if hat < 1 else 0
                 cov_r = (se_d**2) / (res['seTE_pooled']**2)
-                influence_data.append({'Study ID': self.df.loc[i, 'Study ID'], 'TE': self.df.loc[i, 'TE'],
-                                       'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
-                                       'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
-                                       'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d})
+
+                influence_data.append({
+                    'Study ID': self.df.loc[i, 'Study ID'],
+                    'TE': self.df.loc[i, 'TE'],
+                    'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
+                    'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
+                    'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
+                })
             except: continue
         self.influence_df = pd.DataFrame(influence_data)
-    def get_influence_diagnostics(self): return self.influence_df
+
+    def get_influence_diagnostics(self):
+        return self.influence_df
 
 # --- 繪圖函式 ---
 def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
+    
     plt.rcParams.update({'font.size': 12, 'figure.dpi': 300, 'font.family': 'sans-serif'})
-    n_studies = len(df); fig_height = n_studies * 0.4 + 2.5 
+    n_studies = len(df)
+    fig_height = n_studies * 0.4 + 2.5 
     fig, ax = plt.subplots(figsize=(12, fig_height))
     n_rows = n_studies + 4
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
     x_study = 0; x_tx_ev = 31; x_tx_tot = 37; x_ctrl_ev = 45; x_ctrl_tot = 51
-    x_plot_start = 55; x_plot_end = 73; x_rr = 79; x_ci = 89; x_wt = 100
+    x_plot_start = 55; x_plot_end = 73 
+    x_rr = 79; x_ci = 89; x_wt = 100
+    
     y_head = n_rows - 1
     ax.text(x_study, y_head, "Study", fontweight='bold', ha='left')
     if is_binary:
@@ -158,7 +197,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals = df['TE']; lows = df['lower']; ups = df['upper']
+        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -327,6 +366,7 @@ def plot_influence_diagnostics_grid(ma_engine):
     plt.tight_layout()
     return fig
 
+# --- Helper Functions (Traffic Light & Summary) ---
 def plot_traffic_light(df, title):
     color_map = {'Low': '#2E7D32', 'Some concerns': '#F9A825', 'High': '#C62828'}
     studies = df['Study ID'].tolist()
@@ -408,7 +448,7 @@ with tab1:
         st.code(final_query, language="text")
         st.markdown(f"👉 [點此前往 PubMed 搜尋](https://pubmed.ncbi.nlm.nih.gov/?term={final_query})")
 
-# Tab 2: PMID Screening (Parsing + Chinese Reason)
+# Tab 2: PMID Screening
 with tab2:
     st.header("📂 智能文獻篩選 (PMID Screening)")
     st.markdown("輸入 PubMed ID (PMID)，AI 將自動抓取摘要並篩選符合 PICO 的文獻。")
@@ -428,7 +468,6 @@ with tab2:
                 
                 for i, record in enumerate(records):
                     if not record.strip(): continue
-                    # Parse Medline
                     pmid_val = "N/A"; title = "N/A"; abstract = ""; authors = []; year = "N/A"; journal = "N/A"
                     for line in record.split('\n'):
                         if line.startswith("PMID- "): pmid_val = line.split('- ')[1].strip()
@@ -445,18 +484,18 @@ with tab2:
                     Role: Systematic Reviewer. Context: P:{p_input}, I:{i_input}, O:{o_input}
                     Task: Screen this study based on abstract.
                     Requirements:
-                    1. Status: INCLUDED or EXCLUDED.
-                    2. Reason: Explain why in Traditional Chinese (繁體中文).
-                    3. Extract: Study Design, Population.
-                    Format: Single line separated by pipes: STATUS | Reason (Chinese) | Study Design | Population
+                    1. Status: INCLUDED or EXCLUDED. 2. Reason: Traditional Chinese. 3. Extract: P, I, C, O1(Primary), O2(Secondary), T(Type).
+                    Format: Single line separated by pipes: STATUS | Reason | P | I | C | O1 | O2 | T
                     Text: {title}\n{abstract}
                     """
                     try:
                         response = model.generate_content(prompt)
                         cols = [c.strip() for c in response.text.split('|')]
-                        if len(cols) >= 4:
+                        if len(cols) >= 8:
                             res = {'PMID': pmid_val, 'First Author': first_author, 'Year': year, 'Journal': journal,
-                                   'Title': title[:50]+"...", 'Status': cols[0], 'Reason': cols[1], 'Design': cols[2], 'Pop': cols[3]}
+                                   'Title': title[:50]+"...", 'Status': cols[0], 'Reason': cols[1], 
+                                   'Population': cols[2], 'Intervention': cols[3], 'Comparison': cols[4],
+                                   'Primary Outcome': cols[5], 'Secondary Outcome': cols[6], 'Study Type': cols[7]}
                             results.append(res)
                     except: pass
                     progress_bar.progress((i + 1) / len(records))
@@ -480,8 +519,7 @@ with tab3:
     with col_outcome:
         primary_outcome = st.text_input("主要 Outcome", value=st.session_state.rob_primary, key="rob_primary_input")
         secondary_outcome = st.text_input("次要 Outcome", value=st.session_state.rob_secondary, key="rob_secondary_input")
-        st.session_state.rob_primary = primary_outcome
-        st.session_state.rob_secondary = secondary_outcome
+        st.session_state.rob_primary = primary_outcome; st.session_state.rob_secondary = secondary_outcome
     if st.button("🚀 開始 RoB 評讀") and api_key and uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); table_rows = []
         for i, file in enumerate(uploaded_files):
