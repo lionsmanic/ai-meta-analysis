@@ -13,23 +13,24 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Auto-Sync Workflow)")
-st.markdown("### 整合 **PICO 自動連動** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Multi-Outcome Sync)")
+st.markdown("### 整合 **PICO 多重結果連動** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
-# --- 初始化全域 Session State ---
-# 這些變數將在不同 Tab 之間傳遞資料
-defaults = {
-    'research_topic': "Acupuncture for stroke recovery",
-    'p_val': "", 'i_val': "", 'c_val': "", 'o1_val': "", 'o2_val': "", # Tab 1 PICO Values
-    'rob_o1': "", 'rob_o2': "", # Tab 3 RoB Outcomes (Synced from Tab 1)
-    'included_pmids': [],
-    'data_extract_results': None,
-    'current_data_type': "Binary"
-}
+# --- 初始化 Session State (關鍵：確保跨 Tab 變數同步) ---
+# 我們使用獨立的變數來儲存 PICO 資料，以便在不同 Tab 間傳遞
+keys_to_init = [
+    'p_val', 'i_val', 'c_val', 'o1_val', 'o2_val', # Tab 1 PICO
+    'rob_primary', 'rob_secondary', # Tab 3 RoB (Synced)
+    'included_pmids', 'included_studies', # Tab 2 Screening
+    'data_extract_results', 'current_data_type', # Tab 4 Data
+    'research_topic'
+]
 
-for key, val in defaults.items():
+for key in keys_to_init:
     if key not in st.session_state:
-        st.session_state[key] = val
+        if key == 'research_topic': st.session_state[key] = "Acupuncture for stroke recovery"
+        elif 'val' in key or 'rob' in key: st.session_state[key] = ""
+        else: st.session_state[key] = []
 
 # --- 設定 Entrez ---
 Entrez.email = "researcher@example.com" 
@@ -207,7 +208,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals = df['TE']; lows = df['lower']; ups = df['upper']
+        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -376,51 +377,6 @@ def plot_influence_diagnostics_grid(ma_engine):
     plt.tight_layout()
     return fig
 
-def plot_traffic_light(df, title):
-    color_map = {'Low': '#2E7D32', 'Some concerns': '#F9A825', 'High': '#C62828'}
-    studies = df['Study ID'].tolist()
-    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
-    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
-    fig, ax = plt.subplots(figsize=(10, len(studies) * 0.8 + 2))
-    for y, study in enumerate(studies):
-        for x, domain in enumerate(domains):
-            risk_val = df[df['Study ID'] == study][DOMAIN_MAPPING[domain]].values[0]
-            risk = str(risk_val).strip()
-            color = '#808080'; symbol = '?'
-            if 'Low' in risk: color = color_map['Low']; symbol = '+'
-            elif 'High' in risk: color = color_map['High']; symbol = '-'
-            elif 'Some' in risk: color = color_map['Some concerns']; symbol = '!'
-            circle = mpatches.Circle((x, len(studies) - 1 - y), 0.4, color=color)
-            ax.add_patch(circle)
-            ax.text(x, len(studies) - 1 - y, symbol, ha='center', va='center', color='white', fontweight='bold', fontsize=12)
-    ax.set_xlim(-0.5, len(domains) - 0.5); ax.set_ylim(-0.5, len(studies) - 0.5)
-    ax.set_xticks(range(len(plot_labels))); ax.set_xticklabels(plot_labels, fontsize=10, fontweight='bold')
-    ax.set_yticks(range(len(studies))); ax.set_yticklabels(studies[::-1], fontsize=10)
-    for spine in ax.spines.values(): spine.set_visible(False)
-    ax.set_title(f"RoB 2.0 Traffic Light Plot: {title}", pad=20, fontsize=14, fontweight='bold')
-    patches = [mpatches.Patch(color=v, label=k) for k, v in color_map.items()]
-    ax.legend(handles=patches, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3, frameon=False)
-    return fig
-
-def plot_summary_bar(df, title):
-    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
-    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
-    data = []
-    for domain in domains:
-        col_name = DOMAIN_MAPPING[domain]
-        counts = df[col_name].apply(lambda x: 'Low' if 'Low' in str(x) else ('High' if 'High' in str(x) else 'Some concerns')).value_counts()
-        total = len(df)
-        if total == 0: total = 1
-        data.append([(counts.get('Low', 0)/total)*100, (counts.get('Some concerns', 0)/total)*100, (counts.get('High', 0)/total)*100])
-    df_plot = pd.DataFrame(data, columns=['Low', 'Some concerns', 'High'], index=plot_labels)
-    fig, ax = plt.subplots(figsize=(10, 5))
-    colors = ['#2E7D32', '#F9A825', '#C62828']
-    df_plot.plot(kind='barh', stacked=True, color=colors, ax=ax, width=0.7)
-    ax.set_xlim(0, 100); ax.set_xlabel("Percentage of Studies (%)"); ax.set_title(f"Risk of Bias Summary: {title}", fontsize=14, fontweight='bold')
-    ax.invert_yaxis(); ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), frameon=False)
-    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
-    return fig
-
 # --- Sidebar: 設定與 API Key ---
 with st.sidebar:
     st.header("🔑 設定")
@@ -429,11 +385,9 @@ with st.sidebar:
         st.success("✅ 已從 Secrets 讀取 API Key")
     else:
         api_key = st.text_input("請輸入您的 Google Gemini API Key", type="password")
-    
     st.divider()
     st.header("1. 研究主題設定")
     st.info(f"當前主題：\n{st.session_state.get('research_topic', '未設定')}")
-    
     if api_key:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-pro')
@@ -441,16 +395,12 @@ with st.sidebar:
 # --- 分頁功能 ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔍 PICO 檢索", "📂 文獻篩選 (PMID)", "🤖 RoB 評讀", "📊 數據萃取", "📈 統計分析"])
 
-# Tab 1: PICO (Interactive Step 1 & 2)
+# Tab 1: PICO
 with tab1:
     st.header("Step 1: 主題自動拆解 (Free Text)")
     research_topic_input = st.text_input("請輸入您的研究主題 (例如: Acupuncture for stroke recovery)", value=st.session_state.get('research_topic', ''), key="topic_input_field")
     st.session_state.research_topic = research_topic_input
     
-    # Initialize PICO vars if needed
-    for k in ['p_val', 'i_val', 'c_val', 'o1_val', 'o2_val']:
-        if k not in st.session_state: st.session_state[k] = ""
-
     if st.button("✨ AI 自動拆解 PICO"):
         if api_key:
             with st.spinner("AI 正在分析您的主題..."):
@@ -465,23 +415,16 @@ with tab1:
                     res = model.generate_content(prompt)
                     parts = [p.strip() for p in res.text.split('|')]
                     if len(parts) >= 5:
-                        st.session_state.p_val = parts[0]
-                        st.session_state.i_val = parts[1]
-                        st.session_state.c_val = parts[2]
-                        st.session_state.o1_val = parts[3]
-                        st.session_state.o2_val = parts[4]
-                        # Sync to RoB vars immediately
-                        st.session_state.rob_o1 = parts[3]
-                        st.session_state.rob_o2 = parts[4]
+                        st.session_state.p_val = parts[0]; st.session_state.i_val = parts[1]; st.session_state.c_val = parts[2]
+                        st.session_state.o1_val = parts[3]; st.session_state.o2_val = parts[4]
+                        # Force sync to RoB vars immediately
+                        st.session_state.rob_primary = parts[3]; st.session_state.rob_secondary = parts[4]
                         st.rerun()
-                except Exception as e:
-                    st.error(f"AI 生成失敗: {e}")
-        else:
-            st.warning("請先輸入 API Key")
+                except Exception as e: st.error(f"AI 生成失敗: {e}")
+        else: st.warning("請先輸入 API Key")
 
     st.markdown("---")
     st.header("Step 2: PICO 確認與 MeSH 轉化")
-    
     col1, col2 = st.columns(2)
     with col1:
         p_input = st.text_area("P (Population)", value=st.session_state.p_val, key="p_area")
@@ -490,12 +433,11 @@ with tab1:
         c_input = st.text_area("C (Comparison)", value=st.session_state.c_val, key="c_area")
         o1_input = st.text_area("O (Primary Outcome)", value=st.session_state.o1_val, key="o1_area")
         o2_input = st.text_area("O (Secondary Outcome)", value=st.session_state.o2_val, key="o2_area")
-        
-    # Update session state from text areas
-    st.session_state.p_val = p_input; st.session_state.i_val = i_input
-    st.session_state.c_val = c_input; st.session_state.o1_val = o1_input
-    st.session_state.o2_val = o2_input
-    st.session_state.rob_o1 = o1_input; st.session_state.rob_o2 = o2_input
+    
+    st.session_state.p_val = p_input; st.session_state.i_val = i_input; st.session_state.c_val = c_input
+    st.session_state.o1_val = o1_input; st.session_state.o2_val = o2_input
+    # Force sync again on manual edit
+    st.session_state.rob_primary = o1_input; st.session_state.rob_secondary = o2_input
 
     st.subheader("Study Design (Filters)")
     c1, c2 = st.columns(2)
@@ -508,43 +450,35 @@ with tab1:
             if t_rct: filters.append('Limit to Randomized Controlled Trials')
             if t_no_review: filters.append('Exclude Reviews')
             filter_text = ", ".join(filters) if filters else "None"
-            
             mesh_prompt = f"""
             Act as a PubMed Search Expert. 
             Input: P: {p_input}, I: {i_input}, C: {c_input}, O: {o1_input}, {o2_input}. 
             Filters: {filter_text}. 
-            Task: 
-            1. Identify MeSH Terms. 
-            2. List synonyms. 
-            3. Construct a valid PubMed Boolean Query string including filters.
-            IMPORTANT: If no MeSH term exists for an Outcome, USE THE FREE TEXT with [Title/Abstract]. Do NOT omit user's outcomes.
+            Task: 1. Identify MeSH Terms. 2. List synonyms. 3. Construct valid PubMed Query.
+            IMPORTANT: If no MeSH term exists for an Outcome, USE THE FREE TEXT.
             Format: MeSH P: ... MeSH I: ... Query: ...
             """
             try:
                 res = model.generate_content(mesh_prompt)
-                st.success("✅ 策略生成成功！")
-                st.text_area("AI 建議與分析", res.text, height=300)
+                st.success("✅ 策略生成成功！"); st.text_area("AI 建議", res.text, height=300)
             except Exception as e: st.error(f"AI 連線錯誤: {e}")
 
 # Tab 2: PMID Screening
 with tab2:
     st.header("📂 智能文獻篩選 (PMID Screening)")
-    pmid_input = st.text_area("請輸入 PMIDs (以逗號或換行分隔)", "16490324, 16380290, 10793055, 2307412", height=150)
-    
+    pmid_input = st.text_area("請輸入 PMIDs", "16490324, 16380290, 10793055, 2307412", height=150)
+    if 'included_pmids' not in st.session_state: st.session_state.included_pmids = []
     if st.button("🚀 開始智能篩選") and api_key and pmid_input:
         pmid_list = [p.strip() for p in pmid_input.replace('\n', ',').split(',') if p.strip()]
-        if not pmid_list:
-            st.error("請輸入有效的 PMID。")
+        if not pmid_list: st.error("請輸入有效的 PMID。")
         else:
             progress_bar = st.progress(0); status_text = st.empty(); results = []
             try:
                 status_text.text("正在從 PubMed 抓取摘要...")
                 handle = Entrez.efetch(db="pubmed", id=pmid_list, rettype="medline", retmode="text")
                 records = handle.read().split('\n\n')
-                
                 ctx_p = st.session_state.p_val; ctx_i = st.session_state.i_val
                 ctx_c = st.session_state.c_val; ctx_o1 = st.session_state.o1_val; ctx_o2 = st.session_state.o2_val
-
                 for i, record in enumerate(records):
                     if not record.strip(): continue
                     pmid_val = "N/A"; title = "N/A"; abstract = ""; authors = []; year = "N/A"; journal = "N/A"
@@ -555,18 +489,12 @@ with tab2:
                         if line.startswith("DP  - "): year = line.split('- ')[1].strip()[:4]
                         if line.startswith("TA  - "): journal = line.split('- ')[1].strip()
                         if line.startswith("FAU - "): authors.append(line.split('- ')[1].strip())
-                    
                     first_author = authors[0] if authors else "Unknown"
                     status_text.text(f"正在篩選: {pmid_val}...")
-                    
                     prompt = f"""
                     Role: Systematic Reviewer. Context: P:{ctx_p}, I:{ctx_i}, C:{ctx_c}, O1:{ctx_o1}, O2:{ctx_o2}
-                    Task: Screen study.
-                    Requirements:
-                    1. Status: INCLUDED or EXCLUDED. 
-                    2. Reason: Traditional Chinese.
-                    3. Extract: P, I, C, O1, O2, T.
-                    Format: Single line separated by pipes: STATUS | Reason | P | I | C | O1 | O2 | T
+                    Task: Screen study. 1.Status(INCLUDED/EXCLUDED) 2.Reason(Trad-Chinese) 3.Extract(P,I,C,O1,O2,T)
+                    Format: STATUS | Reason | P | I | C | O1 | O2 | T
                     Text: {title}\n{abstract}
                     """
                     try:
@@ -580,29 +508,26 @@ with tab2:
                             results.append(res)
                     except: pass
                     progress_bar.progress((i + 1) / len(records))
-                
-                if results:
-                    st.dataframe(pd.DataFrame(results))
-                    st.success("篩選完成！請針對納入的文獻下載 PDF 並於下一頁上傳。")
+                if results: st.dataframe(pd.DataFrame(results))
             except Exception as e: st.error(f"PubMed 連線錯誤: {e}")
 
 # Tab 3: RoB
 with tab3:
     st.header("🤖 RoB 2.0 評讀")
-    # Defaults from global state
-    default_o1 = st.session_state.get('rob_o1', "Menopausal symptoms")
-    default_o2 = st.session_state.get('rob_o2', "Cancer recurrence")
-
+    # Initialize RoB Outcomes from Session State (Synced from Tab 1)
+    if 'rob_primary' not in st.session_state: st.session_state.rob_primary = ""
+    if 'rob_secondary' not in st.session_state: st.session_state.rob_secondary = ""
+    
     col_file, col_outcome = st.columns([1, 1])
     with col_file:
         uploaded_files = st.file_uploader("上傳納入的 PDF 全文", type="pdf", accept_multiple_files=True, key="rob_uploader")
         if uploaded_files: st.session_state.uploaded_files = uploaded_files
     with col_outcome:
-        primary_outcome = st.text_input("主要 Outcome", value=default_o1, key="rob_primary_input")
-        secondary_outcome = st.text_input("次要 Outcome", value=default_o2, key="rob_secondary_input")
-        # Update specific rob state
-        st.session_state.rob_o1 = primary_outcome
-        st.session_state.rob_o2 = secondary_outcome
+        # Widgets display and update session state
+        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.rob_primary, key="rob_primary_input")
+        secondary_outcome = st.text_input("次要 Outcome (以逗號分隔)", value=st.session_state.rob_secondary, key="rob_secondary_input")
+        st.session_state.rob_primary = primary_outcome
+        st.session_state.rob_secondary = secondary_outcome
 
     if st.button("🚀 開始 RoB 評讀") and api_key and uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); table_rows = []
@@ -613,8 +538,18 @@ with tab3:
                 text_content = ""
                 for page in pdf_reader.pages: text_content += page.extract_text()
             except: continue
+            
+            # Handle multiple secondary outcomes
+            sec_outcomes_list = [s.strip() for s in secondary_outcome.split(',') if s.strip()]
+            sec_outcomes_str = ", ".join(sec_outcomes_list)
+            
             prompt = f"""
-            Role: Expert Reviewer (RoB 2.0). Outcomes: 1.{primary_outcome}, 2.{secondary_outcome}
+            Role: Expert Reviewer (RoB 2.0). 
+            Outcomes to assess: 
+            1. Primary: {primary_outcome}
+            2. Secondary List: {sec_outcomes_str}
+            
+            Task: Create a SEPARATE row for the Primary Outcome AND for EACH Secondary Outcome found in the text.
             Format: Pipe separated line: StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | Overall | Reasoning
             (Values: Low, Some concerns, High. Reason in Traditional Chinese).
             Text: {text_content[:25000]}
@@ -631,6 +566,7 @@ with tab3:
             df = pd.DataFrame(table_rows, columns=['Study ID', 'Outcome', 'D1', 'D2', 'D3', 'D4', 'D5', 'Overall', 'Reasoning'])
             st.session_state.rob_results = df.rename(columns=DOMAIN_MAPPING)
             status_text.text("評讀完成！")
+            
     if 'rob_results' in st.session_state and st.session_state.rob_results is not None:
         df = st.session_state.rob_results
         st.dataframe(df)
@@ -647,15 +583,20 @@ with tab4:
     st.header("📊 數據萃取")
     col_ex_outcome, col_ex_type = st.columns([2, 1])
     with col_ex_outcome:
-        # Dynamic options from Tab 3
+        # Dynamic options: Primary + Split Secondary List
         opts = []
-        if st.session_state.rob_o1: opts.append(st.session_state.rob_o1)
-        if st.session_state.rob_o2: opts.append(st.session_state.rob_o2)
+        if st.session_state.rob_primary: 
+            opts.append(st.session_state.rob_primary)
+        
+        if st.session_state.rob_secondary:
+            secs = [s.strip() for s in st.session_state.rob_secondary.split(',') if s.strip()]
+            opts.extend(secs)
+            
         target_outcome = st.selectbox("欲萃取的 Outcome", opts if opts else ["請先設定 Outcome"])
     with col_ex_type:
         data_type = st.radio("數據型態", ["二元數據 (Binary)", "連續數據 (Continuous)"])
-    
-    if st.button("🔍 開始數據萃取") and api_key and st.session_state.get('uploaded_files'):
+        
+    if st.button("🔍 開始數據萃取") and api_key and st.session_state.uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); extract_rows = []
         files = st.session_state.uploaded_files
         for i, file in enumerate(files):
