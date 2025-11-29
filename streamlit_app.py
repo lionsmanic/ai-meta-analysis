@@ -13,16 +13,15 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Multi-Outcome Sync)")
-st.markdown("### 整合 **PICO 多重結果連動** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Manual Sync Buttons)")
+st.markdown("### 整合 **PICO** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
-# --- 初始化 Session State (關鍵：確保跨 Tab 變數同步) ---
-# 我們使用獨立的變數來儲存 PICO 資料，以便在不同 Tab 間傳遞
+# --- 初始化 Session State ---
 keys_to_init = [
     'p_val', 'i_val', 'c_val', 'o1_val', 'o2_val', # Tab 1 PICO
-    'rob_primary', 'rob_secondary', # Tab 3 RoB (Synced)
-    'included_pmids', 'included_studies', # Tab 2 Screening
-    'data_extract_results', 'current_data_type', # Tab 4 Data
+    'rob_primary', 'rob_secondary', # Tab 3 RoB
+    'included_pmids', 'included_studies', 
+    'data_extract_results', 'current_data_type',
     'research_topic'
 ]
 
@@ -161,7 +160,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 ---
+# --- 繪圖函式 (v7.3 Perfect Spacing) ---
 def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
@@ -198,7 +197,8 @@ def plot_forest_professional(ma_engine):
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
-        center = 1.0; all_v = list(vals)+list(lows)+list(ups)
+        center = 1.0
+        all_v = list(vals)+list(lows)+list(ups)
         min_v = min(min(all_v), pool_low); max_v = max(max(all_v), pool_up)
         d_min = abs(np.log(min_v)-np.log(1)) if min_v>0 else 5; d_max = abs(np.log(max_v)-np.log(1))
         md = max(d_min, d_max)*1.1; v_min = np.exp(-md); v_max = np.exp(md)
@@ -208,7 +208,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
+        vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -377,6 +377,51 @@ def plot_influence_diagnostics_grid(ma_engine):
     plt.tight_layout()
     return fig
 
+def plot_traffic_light(df, title):
+    color_map = {'Low': '#2E7D32', 'Some concerns': '#F9A825', 'High': '#C62828'}
+    studies = df['Study ID'].tolist()
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
+    fig, ax = plt.subplots(figsize=(10, len(studies) * 0.8 + 2))
+    for y, study in enumerate(studies):
+        for x, domain in enumerate(domains):
+            risk_val = df[df['Study ID'] == study][DOMAIN_MAPPING[domain]].values[0]
+            risk = str(risk_val).strip()
+            color = '#808080'; symbol = '?'
+            if 'Low' in risk: color = color_map['Low']; symbol = '+'
+            elif 'High' in risk: color = color_map['High']; symbol = '-'
+            elif 'Some' in risk: color = color_map['Some concerns']; symbol = '!'
+            circle = mpatches.Circle((x, len(studies) - 1 - y), 0.4, color=color)
+            ax.add_patch(circle)
+            ax.text(x, len(studies) - 1 - y, symbol, ha='center', va='center', color='white', fontweight='bold', fontsize=12)
+    ax.set_xlim(-0.5, len(domains) - 0.5); ax.set_ylim(-0.5, len(studies) - 0.5)
+    ax.set_xticks(range(len(plot_labels))); ax.set_xticklabels(plot_labels, fontsize=10, fontweight='bold')
+    ax.set_yticks(range(len(studies))); ax.set_yticklabels(studies[::-1], fontsize=10)
+    for spine in ax.spines.values(): spine.set_visible(False)
+    ax.set_title(f"RoB 2.0 Traffic Light Plot: {title}", pad=20, fontsize=14, fontweight='bold')
+    patches = [mpatches.Patch(color=v, label=k) for k, v in color_map.items()]
+    ax.legend(handles=patches, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3, frameon=False)
+    return fig
+
+def plot_summary_bar(df, title):
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
+    data = []
+    for domain in domains:
+        col_name = DOMAIN_MAPPING[domain]
+        counts = df[col_name].apply(lambda x: 'Low' if 'Low' in str(x) else ('High' if 'High' in str(x) else 'Some concerns')).value_counts()
+        total = len(df)
+        if total == 0: total = 1
+        data.append([(counts.get('Low', 0)/total)*100, (counts.get('Some concerns', 0)/total)*100, (counts.get('High', 0)/total)*100])
+    df_plot = pd.DataFrame(data, columns=['Low', 'Some concerns', 'High'], index=plot_labels)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    colors = ['#2E7D32', '#F9A825', '#C62828']
+    df_plot.plot(kind='barh', stacked=True, color=colors, ax=ax, width=0.7)
+    ax.set_xlim(0, 100); ax.set_xlabel("Percentage of Studies (%)"); ax.set_title(f"Risk of Bias Summary: {title}", fontsize=14, fontweight='bold')
+    ax.invert_yaxis(); ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), frameon=False)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+    return fig
+
 # --- Sidebar: 設定與 API Key ---
 with st.sidebar:
     st.header("🔑 設定")
@@ -417,7 +462,6 @@ with tab1:
                     if len(parts) >= 5:
                         st.session_state.p_val = parts[0]; st.session_state.i_val = parts[1]; st.session_state.c_val = parts[2]
                         st.session_state.o1_val = parts[3]; st.session_state.o2_val = parts[4]
-                        # Force sync to RoB vars immediately
                         st.session_state.rob_primary = parts[3]; st.session_state.rob_secondary = parts[4]
                         st.rerun()
                 except Exception as e: st.error(f"AI 生成失敗: {e}")
@@ -436,8 +480,6 @@ with tab1:
     
     st.session_state.p_val = p_input; st.session_state.i_val = i_input; st.session_state.c_val = c_input
     st.session_state.o1_val = o1_input; st.session_state.o2_val = o2_input
-    # Force sync again on manual edit
-    st.session_state.rob_primary = o1_input; st.session_state.rob_secondary = o2_input
 
     st.subheader("Study Design (Filters)")
     c1, c2 = st.columns(2)
@@ -514,18 +556,24 @@ with tab2:
 # Tab 3: RoB
 with tab3:
     st.header("🤖 RoB 2.0 評讀")
-    # Initialize RoB Outcomes from Session State (Synced from Tab 1)
-    if 'rob_primary' not in st.session_state: st.session_state.rob_primary = ""
-    if 'rob_secondary' not in st.session_state: st.session_state.rob_secondary = ""
+    if 'rob_results' not in st.session_state: st.session_state.rob_results = None
+    if 'uploaded_files' not in st.session_state: st.session_state.uploaded_files = []
     
+    # Manual Sync Button
+    c1, c2 = st.columns([3, 1])
+    with c2:
+        if st.button("🔄 從 PICO 同步 Outcomes"):
+            st.session_state.rob_primary = st.session_state.o1_val
+            st.session_state.rob_secondary = st.session_state.o2_val
+            st.rerun()
+
     col_file, col_outcome = st.columns([1, 1])
     with col_file:
         uploaded_files = st.file_uploader("上傳納入的 PDF 全文", type="pdf", accept_multiple_files=True, key="rob_uploader")
         if uploaded_files: st.session_state.uploaded_files = uploaded_files
     with col_outcome:
-        # Widgets display and update session state
-        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.rob_primary, key="rob_primary_input")
-        secondary_outcome = st.text_input("次要 Outcome (以逗號分隔)", value=st.session_state.rob_secondary, key="rob_secondary_input")
+        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.get('rob_primary', ''), key="rob_primary_input")
+        secondary_outcome = st.text_input("次要 Outcome (逗號分隔)", value=st.session_state.get('rob_secondary', ''), key="rob_secondary_input")
         st.session_state.rob_primary = primary_outcome
         st.session_state.rob_secondary = secondary_outcome
 
@@ -539,19 +587,15 @@ with tab3:
                 for page in pdf_reader.pages: text_content += page.extract_text()
             except: continue
             
-            # Handle multiple secondary outcomes
             sec_outcomes_list = [s.strip() for s in secondary_outcome.split(',') if s.strip()]
             sec_outcomes_str = ", ".join(sec_outcomes_list)
             
             prompt = f"""
             Role: Expert Reviewer (RoB 2.0). 
-            Outcomes to assess: 
-            1. Primary: {primary_outcome}
-            2. Secondary List: {sec_outcomes_str}
-            
-            Task: Create a SEPARATE row for the Primary Outcome AND for EACH Secondary Outcome found in the text.
-            Format: Pipe separated line: StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | Overall | Reasoning
-            (Values: Low, Some concerns, High. Reason in Traditional Chinese).
+            Outcomes: 1. Primary: {primary_outcome}, 2. Secondary List: {sec_outcomes_str}
+            Task: Create SEPARATE row for Primary and EACH Secondary outcome found.
+            Format: Pipe separated: StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | Overall | Reasoning
+            (Values: Low, Some concerns, High. Reason: Trad-Chinese).
             Text: {text_content[:25000]}
             """
             try:
@@ -566,8 +610,7 @@ with tab3:
             df = pd.DataFrame(table_rows, columns=['Study ID', 'Outcome', 'D1', 'D2', 'D3', 'D4', 'D5', 'Overall', 'Reasoning'])
             st.session_state.rob_results = df.rename(columns=DOMAIN_MAPPING)
             status_text.text("評讀完成！")
-            
-    if 'rob_results' in st.session_state and st.session_state.rob_results is not None:
+    if st.session_state.rob_results is not None:
         df = st.session_state.rob_results
         st.dataframe(df)
         unique_outcomes = df['Outcome'].unique()
@@ -581,13 +624,16 @@ with tab3:
 # Tab 4: Data Extraction
 with tab4:
     st.header("📊 數據萃取")
+    if 'data_extract_results' not in st.session_state: st.session_state.data_extract_results = None
+    
     col_ex_outcome, col_ex_type = st.columns([2, 1])
     with col_ex_outcome:
-        # Dynamic options: Primary + Split Secondary List
-        opts = []
-        if st.session_state.rob_primary: 
-            opts.append(st.session_state.rob_primary)
+        c1, c2 = st.columns([3, 1])
+        with c2:
+            if st.button("🔄 更新 Outcome 選單"): st.rerun()
         
+        opts = []
+        if st.session_state.rob_primary: opts.append(st.session_state.rob_primary)
         if st.session_state.rob_secondary:
             secs = [s.strip() for s in st.session_state.rob_secondary.split(',') if s.strip()]
             opts.extend(secs)
@@ -628,13 +674,13 @@ with tab4:
             st.session_state.current_data_type = data_type
             status_text.text("萃取完成！")
     
-    if 'data_extract_results' in st.session_state and st.session_state.data_extract_results is not None:
+    if st.session_state.data_extract_results is not None:
         st.dataframe(st.session_state.data_extract_results)
 
 # Tab 5: Stats
 with tab5:
     st.header("📈 統計分析")
-    if 'data_extract_results' in st.session_state and st.session_state.data_extract_results is not None:
+    if st.session_state.data_extract_results is not None:
         df_extract = st.session_state.data_extract_results
         dtype = st.session_state.get('current_data_type', "Binary")
         ma = MetaAnalysisEngine(df_extract, dtype)
