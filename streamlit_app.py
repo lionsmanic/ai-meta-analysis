@@ -13,13 +13,15 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Manual Sync Buttons)")
+st.title("🧬 AI-Meta Analysis Pro (Sync Fixed)")
 st.markdown("### 整合 **PICO** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
 # --- 初始化 Session State ---
+# 確保所有關鍵變數都已初始化
 keys_to_init = [
-    'p_val', 'i_val', 'c_val', 'o1_val', 'o2_val', # Tab 1 PICO
-    'rob_primary', 'rob_secondary', # Tab 3 RoB
+    'p_val', 'i_val', 'c_val', 'o1_val', 'o2_val', # Tab 1 PICO values
+    'o1_area', 'o2_area', # Tab 1 Widget keys (Important for sync)
+    'rob_primary_input', 'rob_secondary_input', # Tab 3 Widget keys
     'included_pmids', 'included_studies', 
     'data_extract_results', 'current_data_type',
     'research_topic'
@@ -28,7 +30,7 @@ keys_to_init = [
 for key in keys_to_init:
     if key not in st.session_state:
         if key == 'research_topic': st.session_state[key] = "Acupuncture for stroke recovery"
-        elif 'val' in key or 'rob' in key: st.session_state[key] = ""
+        elif 'val' in key or 'area' in key or 'input' in key: st.session_state[key] = ""
         else: st.session_state[key] = []
 
 # --- 設定 Entrez ---
@@ -160,7 +162,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 (v7.3 Perfect Spacing) ---
+# --- 繪圖函式 ---
 def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
@@ -197,8 +199,7 @@ def plot_forest_professional(ma_engine):
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
-        center = 1.0
-        all_v = list(vals)+list(lows)+list(ups)
+        center = 1.0; all_v = list(vals)+list(lows)+list(ups)
         min_v = min(min(all_v), pool_low); max_v = max(max(all_v), pool_up)
         d_min = abs(np.log(min_v)-np.log(1)) if min_v>0 else 5; d_max = abs(np.log(max_v)-np.log(1))
         md = max(d_min, d_max)*1.1; v_min = np.exp(-md); v_max = np.exp(md)
@@ -208,7 +209,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals = df['TE']; lows = df['lower']; ups = df['upper']
+        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -430,9 +431,11 @@ with st.sidebar:
         st.success("✅ 已從 Secrets 讀取 API Key")
     else:
         api_key = st.text_input("請輸入您的 Google Gemini API Key", type="password")
+    
     st.divider()
     st.header("1. 研究主題設定")
     st.info(f"當前主題：\n{st.session_state.get('research_topic', '未設定')}")
+    
     if api_key:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-pro')
@@ -480,6 +483,9 @@ with tab1:
     
     st.session_state.p_val = p_input; st.session_state.i_val = i_input; st.session_state.c_val = c_input
     st.session_state.o1_val = o1_input; st.session_state.o2_val = o2_input
+    # Explicitly update RoB inputs from Tab 1 Text Areas
+    st.session_state.rob_primary = o1_input
+    st.session_state.rob_secondary = o2_input
 
     st.subheader("Study Design (Filters)")
     c1, c2 = st.columns(2)
@@ -550,7 +556,9 @@ with tab2:
                             results.append(res)
                     except: pass
                     progress_bar.progress((i + 1) / len(records))
-                if results: st.dataframe(pd.DataFrame(results))
+                if results:
+                    st.dataframe(pd.DataFrame(results))
+                    st.success("篩選完成！請針對納入的文獻下載 PDF 並於下一頁上傳。")
             except Exception as e: st.error(f"PubMed 連線錯誤: {e}")
 
 # Tab 3: RoB
@@ -559,12 +567,14 @@ with tab3:
     if 'rob_results' not in st.session_state: st.session_state.rob_results = None
     if 'uploaded_files' not in st.session_state: st.session_state.uploaded_files = []
     
-    # Manual Sync Button
+    # Manual Sync Button with direct Widget Key update
     c1, c2 = st.columns([3, 1])
     with c2:
-        if st.button("🔄 從 PICO 同步 Outcomes"):
-            st.session_state.rob_primary = st.session_state.o1_val
-            st.session_state.rob_secondary = st.session_state.o2_val
+        if st.button("🔄 從 PICO 同步"):
+            st.session_state['rob_primary_input'] = st.session_state.get('o1_area', '')
+            st.session_state['rob_secondary_input'] = st.session_state.get('o2_area', '')
+            st.session_state.rob_primary = st.session_state.get('o1_area', '')
+            st.session_state.rob_secondary = st.session_state.get('o2_area', '')
             st.rerun()
 
     col_file, col_outcome = st.columns([1, 1])
@@ -587,13 +597,13 @@ with tab3:
                 for page in pdf_reader.pages: text_content += page.extract_text()
             except: continue
             
-            sec_outcomes_list = [s.strip() for s in secondary_outcome.split(',') if s.strip()]
-            sec_outcomes_str = ", ".join(sec_outcomes_list)
+            sec_list = [s.strip() for s in secondary_outcome.split(',') if s.strip()]
+            sec_str = ", ".join(sec_list)
             
             prompt = f"""
             Role: Expert Reviewer (RoB 2.0). 
-            Outcomes: 1. Primary: {primary_outcome}, 2. Secondary List: {sec_outcomes_str}
-            Task: Create SEPARATE row for Primary and EACH Secondary outcome found.
+            Outcomes: 1. Primary: {primary_outcome}, 2. Secondary List: {sec_str}
+            Task: Create SEPARATE row for Primary and EACH Secondary.
             Format: Pipe separated: StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | Overall | Reasoning
             (Values: Low, Some concerns, High. Reason: Trad-Chinese).
             Text: {text_content[:25000]}
@@ -610,7 +620,7 @@ with tab3:
             df = pd.DataFrame(table_rows, columns=['Study ID', 'Outcome', 'D1', 'D2', 'D3', 'D4', 'D5', 'Overall', 'Reasoning'])
             st.session_state.rob_results = df.rename(columns=DOMAIN_MAPPING)
             status_text.text("評讀完成！")
-    if st.session_state.rob_results is not None:
+    if 'rob_results' in st.session_state and st.session_state.rob_results is not None:
         df = st.session_state.rob_results
         st.dataframe(df)
         unique_outcomes = df['Outcome'].unique()
@@ -630,12 +640,16 @@ with tab4:
     with col_ex_outcome:
         c1, c2 = st.columns([3, 1])
         with c2:
-            if st.button("🔄 更新 Outcome 選單"): st.rerun()
+            if st.button("🔄 更新選單"): st.rerun()
+        
+        # Build opts from latest widget state or session variable
+        r_p = st.session_state.get('rob_primary_input', st.session_state.rob_primary)
+        r_s = st.session_state.get('rob_secondary_input', st.session_state.rob_secondary)
         
         opts = []
-        if st.session_state.rob_primary: opts.append(st.session_state.rob_primary)
-        if st.session_state.rob_secondary:
-            secs = [s.strip() for s in st.session_state.rob_secondary.split(',') if s.strip()]
+        if r_p: opts.append(r_p)
+        if r_s:
+            secs = [s.strip() for s in r_s.split(',') if s.strip()]
             opts.extend(secs)
             
         target_outcome = st.selectbox("欲萃取的 Outcome", opts if opts else ["請先設定 Outcome"])
@@ -674,13 +688,13 @@ with tab4:
             st.session_state.current_data_type = data_type
             status_text.text("萃取完成！")
     
-    if st.session_state.data_extract_results is not None:
+    if 'data_extract_results' in st.session_state and st.session_state.data_extract_results is not None:
         st.dataframe(st.session_state.data_extract_results)
 
 # Tab 5: Stats
 with tab5:
     st.header("📈 統計分析")
-    if st.session_state.data_extract_results is not None:
+    if 'data_extract_results' in st.session_state and st.session_state.data_extract_results is not None:
         df_extract = st.session_state.data_extract_results
         dtype = st.session_state.get('current_data_type', "Binary")
         ma = MetaAnalysisEngine(df_extract, dtype)
