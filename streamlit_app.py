@@ -13,8 +13,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Smart Search v14.0)")
-st.markdown("### 整合 **精準 PICO 檢索 (Free Text 保留)** ➔ PMID 篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Smart PICO Workflow)")
+st.markdown("### 整合 **主題自動拆解** ➔ PICO 優化 ➔ 智能篩選 ➔ 評讀與統計")
 
 # --- 設定 Entrez ---
 Entrez.email = "researcher@example.com" 
@@ -192,7 +192,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
+        vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -416,7 +416,6 @@ with st.sidebar:
         api_key = st.text_input("請輸入您的 Google Gemini API Key", type="password")
     st.divider()
     st.header("1. 研究主題設定")
-    topic = st.text_input("研究主題", "子宮內膜癌術後使用HRT之安全性")
     if api_key:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-pro')
@@ -424,45 +423,90 @@ with st.sidebar:
 # --- 分頁功能 ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔍 PICO 檢索", "📂 文獻篩選 (PMID)", "🤖 RoB 評讀", "📊 數據萃取", "📈 統計分析"])
 
-# Tab 1: PICO
+# Tab 1: PICO (Interactive Step 1 & 2)
 with tab1:
-    st.header("PICO 設定與 PubMed 搜尋 (MeSH 智能映射)")
-    st.markdown("輸入自由詞 (Free Text)，AI 將自動轉化為 MeSH 並生成檢索字串。")
+    st.header("Step 1: 主題自動拆解 (Free Text)")
+    research_topic = st.text_input("請輸入您的研究主題 (例如: Acupuncture for stroke recovery)", "Acupuncture for stroke recovery")
+    
+    # Initialize session state for PICO inputs
+    if 'p_input' not in st.session_state: st.session_state.p_input = ""
+    if 'i_input' not in st.session_state: st.session_state.i_input = ""
+    if 'c_input' not in st.session_state: st.session_state.c_input = ""
+    if 'o1_input' not in st.session_state: st.session_state.o1_input = ""
+    if 'o2_input' not in st.session_state: st.session_state.o2_input = ""
+
+    if st.button("✨ AI 自動拆解 PICO"):
+        if api_key:
+            try:
+                # Prompt to extract PICO
+                prompt = f"""
+                Analyze the research topic: '{research_topic}'.
+                Identify the P (Population), I (Intervention), C (Comparison), and O (Primary/Secondary Outcomes).
+                Return ONLY a single line separated by pipes (|):
+                P | I | C | Primary Outcome | Secondary Outcome
+                Example: Stroke patients | Acupuncture | Sham acupuncture | Motor function | Quality of life
+                """
+                res = model.generate_content(prompt)
+                parts = [p.strip() for p in res.text.split('|')]
+                if len(parts) >= 5:
+                    st.session_state.p_input = parts[0]
+                    st.session_state.i_input = parts[1]
+                    st.session_state.c_input = parts[2]
+                    st.session_state.o1_input = parts[3]
+                    st.session_state.o2_input = parts[4]
+                    st.rerun() # Refresh to show new values
+            except Exception as e:
+                st.error(f"AI 生成失敗: {e}")
+        else:
+            st.warning("請先輸入 API Key")
+
+    st.markdown("---")
+    st.header("Step 2: PICO 確認與 MeSH 轉化")
+    
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("P / I")
-        p_input = st.text_area("P (Patient/Population)", "Endometrial Neoplasms, Survivors", key="p_input", height=100)
-        i_input = st.text_area("I (Intervention)", "Hormone Replacement Therapy", key="i_input", height=100)
+        p_input = st.text_area("P (Population)", value=st.session_state.p_input, key="p_input_area")
+        i_input = st.text_area("I (Intervention)", value=st.session_state.i_input, key="i_input_area")
     with col2:
-        st.subheader("C / O")
-        c_input = st.text_area("C (Comparison)", "Placebo, Non-hormonal therapy", key="c_input", height=68)
-        o1_input = st.text_area("O (Primary Outcome)", "Menopausal symptoms relief", key="o1_input", height=68)
-        o2_input = st.text_area("O (Secondary Outcome)", "Cancer recurrence", key="o2_input", height=68)
+        c_input = st.text_area("C (Comparison)", value=st.session_state.c_input, key="c_input_area")
+        o1_input = st.text_area("O (Primary Outcome)", value=st.session_state.o1_input, key="o1_input_area")
+        o2_input = st.text_area("O (Secondary Outcome)", value=st.session_state.o2_input, key="o2_input_area")
+        
+    # Sync manual edits back to session state
+    st.session_state.p_input = p_input
+    st.session_state.i_input = i_input
+    st.session_state.c_input = c_input
+    st.session_state.o1_input = o1_input
+    st.session_state.o2_input = o2_input
+
     st.subheader("Study Design (Filters)")
     c1, c2 = st.columns(2)
     with c1: t_rct = st.checkbox("限定 RCT", value=False)
     with c2: t_no_review = st.checkbox("排除 Review", value=True)
-    if st.button("🚀 AI 智能轉化 (MeSH) & 生成策略") and api_key:
-        filters = []
-        if t_rct: filters.append('Limit to Randomized Controlled Trials')
-        if t_no_review: filters.append('Exclude Reviews')
-        filter_text = ", ".join(filters) if filters else "None"
-        mesh_prompt = f"""
-        Act as a PubMed Search Expert. 
-        Input: P: {p_input}, I: {i_input}, C: {c_input}, O: {o1_input}, {o2_input}. 
-        Filters: {filter_text}. 
-        Task: 
-        1. Identify MeSH Terms. 
-        2. List synonyms. 
-        3. Construct a valid PubMed Boolean Query string including filters.
-        IMPORTANT: If no MeSH term exists for an Outcome, USE THE FREE TEXT with [Title/Abstract]. Do NOT omit user's outcomes.
-        Format: MeSH P: ... MeSH I: ... Query: ...
-        """
-        try:
-            res = model.generate_content(mesh_prompt)
-            st.success("✅ 策略生成成功！")
-            st.text_area("AI 建議與分析", res.text, height=300)
-        except Exception as e: st.error(f"AI 連線錯誤: {e}")
+
+    if st.button("🚀 生成 MeSH 策略"):
+        if api_key:
+            filters = []
+            if t_rct: filters.append('Limit to Randomized Controlled Trials')
+            if t_no_review: filters.append('Exclude Reviews')
+            filter_text = ", ".join(filters) if filters else "None"
+            
+            mesh_prompt = f"""
+            Act as a PubMed Search Expert. 
+            Input: P: {p_input}, I: {i_input}, C: {c_input}, O: {o1_input}, {o2_input}. 
+            Filters: {filter_text}. 
+            Task: 
+            1. Identify MeSH Terms. 
+            2. List synonyms. 
+            3. Construct a valid PubMed Boolean Query string including filters.
+            IMPORTANT: If no MeSH term exists for an Outcome, USE THE FREE TEXT with [Title/Abstract]. Do NOT omit user's outcomes.
+            Format: MeSH P: ... MeSH I: ... Query: ...
+            """
+            try:
+                res = model.generate_content(mesh_prompt)
+                st.success("✅ 策略生成成功！")
+                st.text_area("AI 建議與分析", res.text, height=300)
+            except Exception as e: st.error(f"AI 連線錯誤: {e}")
 
 # Tab 2: PMID Screening
 with tab2:
