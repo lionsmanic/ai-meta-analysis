@@ -13,13 +13,13 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Auto-PICO Fixed)")
-st.markdown("### 整合 **PICO 自動拆解** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (English PICO Forced)")
+st.markdown("### 整合 **PICO (自動轉譯英文)** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
 # --- 初始化 Session State ---
 keys_to_init = [
-    'p_val', 'i_val', 'c_val', 'o1_val', 'o2_val', # PICO Values
-    'p_area', 'i_area', 'c_area', 'o1_area', 'o2_area', # Widget Keys (Fixes Sync Issue)
+    'p_val', 'i_val', 'c_val', 'o1_val', 'o2_val', 
+    'p_area', 'i_area', 'c_area', 'o1_area', 'o2_area', # Widget Keys
     'rob_primary_input', 'rob_secondary_input',
     'included_pmids', 'included_studies', 
     'data_extract_results', 'current_data_type',
@@ -208,7 +208,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
+        vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -452,7 +452,10 @@ with tab1:
                 try:
                     prompt = f"""
                     Analyze the research topic: '{st.session_state.research_topic}'.
-                    Identify P, I, C, Primary Outcome, Secondary Outcome.
+                    Identify P (Population), I (Intervention), C (Comparison), Primary Outcome, and Secondary Outcome.
+                    IMPORTANT: 
+                    1. Regardless of the input language, THE OUTPUT MUST BE IN ENGLISH.
+                    2. Translate Chinese concepts to standard English medical terms.
                     Return ONLY a single line separated by pipes (|):
                     P | I | C | O1 | O2
                     Example: Stroke patients | Acupuncture | Sham acupuncture | Motor function | Quality of life
@@ -468,6 +471,11 @@ with tab1:
                         st.session_state['c_area'] = parts[2]
                         st.session_state['o1_area'] = parts[3]
                         st.session_state['o2_area'] = parts[4]
+                        # Force Sync RoB
+                        st.session_state['rob_primary_input'] = parts[3]
+                        st.session_state['rob_secondary_input'] = parts[4]
+                        st.session_state.rob_primary = parts[3]
+                        st.session_state.rob_secondary = parts[4]
                         st.rerun()
                 except Exception as e: st.error(f"AI 生成失敗: {e}")
         else: st.warning("請先輸入 API Key")
@@ -571,6 +579,8 @@ with tab3:
         if st.button("🔄 從 PICO 同步 Outcomes"):
             st.session_state['rob_primary_input'] = st.session_state.get('o1_area', '')
             st.session_state['rob_secondary_input'] = st.session_state.get('o2_area', '')
+            st.session_state.rob_primary = st.session_state.get('o1_area', '')
+            st.session_state.rob_secondary = st.session_state.get('o2_area', '')
             st.rerun()
 
     col_file, col_outcome = st.columns([1, 1])
@@ -578,9 +588,10 @@ with tab3:
         uploaded_files = st.file_uploader("上傳納入的 PDF 全文", type="pdf", accept_multiple_files=True, key="rob_uploader")
         if uploaded_files: st.session_state.uploaded_files = uploaded_files
     with col_outcome:
-        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.get('o1_val', ''), key="rob_primary_input")
-        secondary_outcome = st.text_input("次要 Outcome (逗號分隔)", value=st.session_state.get('o2_val', ''), key="rob_secondary_input")
-        st.session_state.rob_primary = primary_outcome; st.session_state.rob_secondary = secondary_outcome
+        primary_outcome = st.text_input("主要 Outcome", value=st.session_state.get('rob_primary', ''), key="rob_primary_input")
+        secondary_outcome = st.text_input("次要 Outcome (逗號分隔)", value=st.session_state.get('rob_secondary', ''), key="rob_secondary_input")
+        st.session_state.rob_primary = primary_outcome
+        st.session_state.rob_secondary = secondary_outcome
 
     if st.button("🚀 開始 RoB 評讀") and api_key and uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); table_rows = []
@@ -591,10 +602,14 @@ with tab3:
                 text_content = ""
                 for page in pdf_reader.pages: text_content += page.extract_text()
             except: continue
-            sec_str = ", ".join([s.strip() for s in secondary_outcome.split(',') if s.strip()])
+            
+            sec_list = [s.strip() for s in secondary_outcome.split(',') if s.strip()]
+            sec_str = ", ".join(sec_list)
+            
             prompt = f"""
-            Role: Expert Reviewer (RoB 2.0). Outcomes: 1. Primary: {primary_outcome}, 2. Secondary: {sec_str}
-            Task: Create SEPARATE row for Primary and EACH Secondary.
+            Role: Expert Reviewer (RoB 2.0). 
+            Outcomes: 1. Primary: {primary_outcome}, 2. Secondary List: {sec_str}
+            Task: Create SEPARATE row for Primary and EACH Secondary outcome found.
             Format: Pipe separated: StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | Overall | Reasoning
             (Values: Low, Some concerns, High. Reason: Trad-Chinese).
             Text: {text_content[:25000]}
@@ -633,9 +648,8 @@ with tab4:
         with c2:
             if st.button("🔄 更新選單"): st.rerun()
         
-        # Get latest values from widget state
-        r_p = st.session_state.get('rob_primary_input', '')
-        r_s = st.session_state.get('rob_secondary_input', '')
+        r_p = st.session_state.get('rob_primary_input', st.session_state.rob_primary)
+        r_s = st.session_state.get('rob_secondary_input', st.session_state.rob_secondary)
         opts = []
         if r_p: opts.append(r_p)
         if r_s: opts.extend([s.strip() for s in r_s.split(',') if s.strip()])
