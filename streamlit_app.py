@@ -13,8 +13,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Multi-Type Extraction)")
-st.markdown("### 整合 PICO ➔ 智能篩選 ➔ RoB 評讀 ➔ **特徵總表 & 彈性數據萃取** ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Batch Extraction Edition)")
+st.markdown("### 整合 PICO ➔ 智能篩選 ➔ RoB 評讀 ➔ **批次數據萃取** ➔ 統計圖表")
 
 # --- 初始化 Session State ---
 keys_to_init = [
@@ -22,9 +22,9 @@ keys_to_init = [
     'p_area', 'i_area', 'c_area', 'o1_area', 'o2_area',
     'rob_primary_input', 'rob_secondary_input',
     'included_pmids', 'included_studies', 
-    'extracted_datasets', # 字典: {'Outcome名稱': DataFrame}
-    'dataset_types',      # 字典: {'Outcome名稱': 'Binary' or 'Continuous'}
-    'characteristics_table', # Table 1 DataFrame
+    'extracted_datasets', # Dict: {'Outcome': df}
+    'dataset_types',      # Dict: {'Outcome': 'Binary'/'Continuous'}
+    'characteristics_table',
     'research_topic',
     'uploaded_files'
 ]
@@ -73,7 +73,7 @@ class MetaAnalysisEngine:
 
     def _clean_and_calculate_effect_sizes(self):
         df = self.raw_df.copy()
-        # 確保 ID 是字串
+        # Ensure ID is string
         df['Study ID'] = df['Study ID'].astype(str)
         
         cols_to_numeric = [c for c in df.columns if c not in ['Study ID', 'Population', 'Tx Details', 'Ctrl Details']]
@@ -112,18 +112,25 @@ class MetaAnalysisEngine:
 
     def _run_random_effects(self):
         k = len(self.df)
-        if k <= 1: return
-        w_fixed = 1 / (self.df['seTE']**2)
-        te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
-        Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
-        df_Q = k - 1
-        p_Q = 1 - stats.chi2.cdf(Q, df_Q)
-        C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
-        tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
-        I2 = max(0, (Q - df_Q) / Q) * 100 if Q > 0 else 0
-        w_random = 1 / (self.df['seTE']**2 + tau2)
-        te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
-        se_random = np.sqrt(1 / np.sum(w_random))
+        if k == 0: return
+        
+        if k == 1:
+            te_random = self.df['TE'].iloc[0]
+            se_random = self.df['seTE'].iloc[0]
+            tau2 = 0.0; I2 = 0.0; Q = 0.0; p_Q = 1.0
+            w_random = np.array([1.0])
+        else:
+            w_fixed = 1 / (self.df['seTE']**2)
+            te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
+            Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
+            df_Q = k - 1
+            p_Q = 1 - stats.chi2.cdf(Q, df_Q)
+            C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
+            tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
+            I2 = max(0, (Q - df_Q) / Q) * 100 if Q > 0 else 0
+            w_random = 1 / (self.df['seTE']**2 + tau2)
+            te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
+            se_random = np.sqrt(1 / np.sum(w_random))
         
         self.results = {
             'TE_pooled': te_random, 'seTE_pooled': se_random,
@@ -133,29 +140,44 @@ class MetaAnalysisEngine:
         self.df['weight'] = (w_random / np.sum(w_random)) * 100
 
     def _calculate_influence_diagnostics(self):
-        if self.df.empty or 'TE' not in self.df.columns: return
+        if self.df.empty or 'TE' not in self.df.columns: 
+            self.influence_df = pd.DataFrame()
+            return
         k = len(self.df); res = self.results
+        if k < 2: 
+            self.influence_df = pd.DataFrame()
+            return
+
         original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
+        
         for i in self.df.index:
             try:
                 subset = self.df.drop(i)
                 if len(subset) == 0: continue
-                w_f = 1 / (subset['seTE']**2); te_f = np.sum(w_f * subset['TE']) / np.sum(w_f)
-                Q_d = np.sum(w_f * (subset['TE'] - te_f)**2); C_d = np.sum(w_f) - np.sum(w_f**2) / np.sum(w_f)
+                
+                w_f = 1 / (subset['seTE']**2)
+                te_f = np.sum(w_f * subset['TE']) / np.sum(w_f)
+                Q_d = np.sum(w_f * (subset['TE'] - te_f)**2)
+                C_d = np.sum(w_f) - np.sum(w_f**2) / np.sum(w_f)
                 tau2_d = max(0, (Q_d - (k - 2)) / C_d) if C_d > 0 else 0
                 w_r = 1 / (subset['seTE']**2 + tau2_d)
                 te_d = np.sum(w_r * subset['TE']) / np.sum(w_r)
                 se_d = np.sqrt(1 / np.sum(w_r))
+                
                 hat = self.df.loc[i, 'weight'] / 100.0
                 resid = self.df.loc[i, 'TE'] - original_te
                 var_resid = self.df.loc[i, 'seTE']**2 + original_tau2
                 rstudent = resid / np.sqrt(var_resid)
-                dffits = np.sqrt(hat / (1 - hat)) * rstudent if hat < 1 else 0
-                cook_d = (rstudent**2 * hat) / (1 - hat) if hat < 1 else 0
+                if hat >= 1: dffits = 0; cook_d = 0
+                else:
+                    dffits = np.sqrt(hat / (1 - hat)) * rstudent
+                    cook_d = (rstudent**2 * hat) / (1 - hat)
                 cov_r = (se_d**2) / (res['seTE_pooled']**2)
+
                 influence_data.append({
-                    'Study ID': self.df.loc[i, 'Study ID'], 'TE': self.df.loc[i, 'TE'],
+                    'Study ID': self.df.loc[i, 'Study ID'],
+                    'TE': self.df.loc[i, 'TE'], 
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -163,9 +185,12 @@ class MetaAnalysisEngine:
             except: continue
         self.influence_df = pd.DataFrame(influence_data)
 
-    def get_influence_diagnostics(self): return self.influence_df
+    def get_influence_diagnostics(self):
+        return self.influence_df
 
-# --- 繪圖函式 (專業版) ---
+# --- 繪圖函式 (Plotting Functions) ---
+# (保持 v7.3 的高畫質與對稱排版，為節省空間此處略過，實際部署時請貼上完整的 plot_forest_professional 等函式)
+# 請務必將之前 v7.3 或 v22.0 的繪圖函式放在這裡
 def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
@@ -174,7 +199,6 @@ def plot_forest_professional(ma_engine):
     fig, ax = plt.subplots(figsize=(12, fig_height))
     n_rows = n_studies + 4
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
-    
     x_study = 0; x_tx_ev = 31; x_tx_tot = 37; x_ctrl_ev = 45; x_ctrl_tot = 51
     x_plot_start = 55; x_plot_end = 73; x_rr = 79; x_ci = 89; x_wt = 100
     y_head = n_rows - 1
@@ -194,7 +218,6 @@ def plot_forest_professional(ma_engine):
     ax.text(x_ci, y_head, "95% CI", fontweight='bold', ha='center')
     ax.text(x_wt, y_head, "Weight", fontweight='bold', ha='right')
     ax.plot([0, 100], [y_head-0.4, y_head-0.4], color='black', linewidth=1)
-
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
@@ -213,7 +236,6 @@ def plot_forest_professional(ma_engine):
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
         def transform(v): return x_plot_start + (v-v_min)/(v_max-v_min)*(x_plot_end-x_plot_start)
-
     for i, row in df.iterrows():
         y = n_rows - 2 - i
         ax.text(x_study, y, str(row['Study ID']), ha='left', va='center')
@@ -233,7 +255,6 @@ def plot_forest_professional(ma_engine):
         ax.text(x_rr, y, f"{vals[i]:.2f}", ha='center', va='center')
         ax.text(x_ci, y, f"[{lows[i]:.2f}; {ups[i]:.2f}]", ha='center', va='center', fontsize=11)
         ax.text(x_wt, y, f"{row['weight']:.1f}%", ha='right', va='center')
-
     y_pool = 1.5
     ax.plot([0, 100], [y_pool+0.8, y_pool+0.8], color='black', linewidth=0.8)
     ax.text(x_study, y_pool, "Random Effects Model", fontweight='bold', ha='left', va='center')
@@ -264,62 +285,6 @@ def plot_forest_professional(ma_engine):
             ax.text(tx, y_axis-0.4, f"{t:g}", ha='center', va='center', fontsize=9)
     ax.text(x_plot_start, 0.2, "Favours Tx", ha='left', va='center', fontsize=10)
     ax.text(x_plot_end, 0.2, "Favours Ctrl", ha='right', va='center', fontsize=10)
-    plt.tight_layout()
-    return fig
-
-# (plot_leave_one_out, plot_funnel, plot_baujat, plot_influence... 省略以節省空間，請保留)
-def transform_none(v): return v 
-
-def plot_funnel(ma_engine):
-    df = ma_engine.df; res = ma_engine.results; te_pooled = res['TE_pooled']
-    plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
-    fig, ax = plt.subplots(figsize=(6, 5))
-    ax.scatter(df['TE'], df['seTE'], color='blue', alpha=0.6, edgecolors='k', zorder=3)
-    max_se = max(df['seTE']) * 1.1
-    x_tri = [te_pooled - 1.96*max_se, te_pooled, te_pooled + 1.96*max_se]
-    y_tri = [max_se, 0, max_se]
-    ax.fill(x_tri, y_tri, color='gray', alpha=0.1)
-    ax.plot([te_pooled, te_pooled - 1.96*max_se], [0, max_se], 'k--', linewidth=0.8)
-    ax.plot([te_pooled, te_pooled + 1.96*max_se], [0, max_se], 'k--', linewidth=0.8)
-    ax.axvline(x=te_pooled, color='red', linestyle='--')
-    ax.set_ylim(max_se, 0)
-    ax.set_ylabel("Standard Error")
-    ax.set_xlabel(ma_engine.effect_label)
-    ax.set_title("Funnel Plot")
-    return fig
-
-def plot_baujat(diag_df):
-    if diag_df.empty: return None
-    plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
-    fig, ax = plt.subplots(figsize=(6, 5))
-    x = diag_df['rstudent'] ** 2 
-    y = abs(diag_df['TE'] - diag_df['TE.del'])
-    ax.scatter(x, y, color='purple', s=80, alpha=0.7)
-    for i, txt in enumerate(diag_df['Study ID']):
-        ax.annotate(txt, (x[i], y[i]), xytext=(3, 3), textcoords='offset points', fontsize=8)
-    ax.set_xlabel("Contribution to Heterogeneity")
-    ax.set_ylabel("Influence on Pooled Result")
-    ax.set_title("Baujat Plot")
-    ax.grid(True, linestyle='--', alpha=0.5)
-    return fig
-
-def plot_influence_diagnostics_grid(ma_engine):
-    df = ma_engine.influence_df
-    if df.empty: return None
-    k = len(df); x = np.arange(1, k + 1)
-    metrics = [('rstudent', 'Studentized Residuals', [-2, 2]), ('dffits', 'DFFITS', [2 * np.sqrt(2/k)]), 
-               ('cook.d', "Cook's Distance", [4/k]), ('cov.r', 'Covariance Ratio', [1]),
-               ('tau2.del', 'Leave-One-Out Tau²', [ma_engine.results['tau2']]), ('QE.del', 'Leave-One-Out Q', [ma_engine.results['Q'] - (k-1)]), 
-               ('hat', 'Hat Values', [2/k]), ('weight', 'Weight (%)', [100/k])]
-    plt.rcParams.update({'font.size': 8, 'figure.dpi': 200})
-    fig, axes = plt.subplots(4, 2, figsize=(12, 14))
-    axes = axes.flatten()
-    for i, (col, title, hlines) in enumerate(metrics):
-        ax = axes[i]; vals = df[col]
-        ax.plot(x, vals, 'o-', color='black', markerfacecolor='gray', markersize=4, linewidth=1)
-        max_idx = np.argmax(np.abs(vals)); ax.plot(x[max_idx], vals[max_idx], 'o', color='red', markersize=5)
-        for h in hlines: ax.axhline(h, linestyle='--', color='black', linewidth=0.8)
-        ax.set_title(title, fontweight='bold'); ax.set_xticks(x); ax.set_xticklabels(range(1, k+1))
     plt.tight_layout()
     return fig
 
@@ -372,6 +337,61 @@ def plot_leave_one_out_professional(ma_engine):
     ax.text(x_stat, y_pool, txt_orig, fontweight='bold', ha='center', va='center')
     cx = transform(center)
     ax.plot([cx, cx], [0, n_rows-1], color='black', linestyle=':', linewidth=1)
+    plt.tight_layout()
+    return fig
+
+def transform_none(v): return v 
+
+def plot_funnel(ma_engine):
+    df = ma_engine.df; res = ma_engine.results; te_pooled = res['TE_pooled']
+    plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.scatter(df['TE'], df['seTE'], color='blue', alpha=0.6, edgecolors='k', zorder=3)
+    max_se = max(df['seTE']) * 1.1
+    x_tri = [te_pooled - 1.96*max_se, te_pooled, te_pooled + 1.96*max_se]
+    y_tri = [max_se, 0, max_se]
+    ax.fill(x_tri, y_tri, color='gray', alpha=0.1)
+    ax.plot([te_pooled, te_pooled - 1.96*max_se], [0, max_se], 'k--', linewidth=0.8)
+    ax.plot([te_pooled, te_pooled + 1.96*max_se], [0, max_se], 'k--', linewidth=0.8)
+    ax.axvline(x=te_pooled, color='red', linestyle='--')
+    ax.set_ylim(max_se, 0)
+    ax.set_ylabel("Standard Error")
+    ax.set_xlabel(ma_engine.effect_label)
+    ax.set_title("Funnel Plot")
+    return fig
+
+def plot_baujat(diag_df):
+    if diag_df.empty: return None
+    plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
+    fig, ax = plt.subplots(figsize=(6, 5))
+    x = diag_df['rstudent'] ** 2 
+    y = abs(diag_df['TE'] - diag_df['TE.del'])
+    ax.scatter(x, y, color='purple', s=80, alpha=0.7)
+    for i, txt in enumerate(diag_df['Study ID']):
+        ax.annotate(txt, (x[i], y[i]), xytext=(3, 3), textcoords='offset points', fontsize=8)
+    ax.set_xlabel("Contribution to Heterogeneity")
+    ax.set_ylabel("Influence on Pooled Result")
+    ax.set_title("Baujat Plot")
+    ax.grid(True, linestyle='--', alpha=0.5)
+    return fig
+
+def plot_influence_diagnostics_grid(ma_engine):
+    df = ma_engine.influence_df
+    if df.empty: return None
+    k = len(df); x = np.arange(1, k + 1)
+    metrics = [('rstudent', 'Studentized Residuals', [-2, 2]), ('dffits', 'DFFITS', [2 * np.sqrt(2/k)]), 
+               ('cook.d', "Cook's Distance", [4/k]), ('cov.r', 'Covariance Ratio', [1]),
+               ('tau2.del', 'Leave-One-Out Tau²', [ma_engine.results['tau2']]), ('QE.del', 'Leave-One-Out Q', [ma_engine.results['Q'] - (k-1)]), 
+               ('hat', 'Hat Values', [2/k]), ('weight', 'Weight (%)', [100/k])]
+    plt.rcParams.update({'font.size': 8, 'figure.dpi': 200})
+    fig, axes = plt.subplots(4, 2, figsize=(12, 14))
+    axes = axes.flatten()
+    for i, (col, title, hlines) in enumerate(metrics):
+        ax = axes[i]; vals = df[col]
+        ax.plot(x, vals, 'o-', color='black', markerfacecolor='gray', markersize=4, linewidth=1)
+        max_idx = np.argmax(np.abs(vals)); ax.plot(x[max_idx], vals[max_idx], 'o', color='red', markersize=5)
+        for h in hlines: ax.axhline(h, linestyle='--', color='black', linewidth=0.8)
+        ax.set_title(title, fontweight='bold'); ax.set_xticks(x); ax.set_xticklabels(range(1, k+1))
     plt.tight_layout()
     return fig
 
@@ -577,11 +597,11 @@ with tab3:
             status_text.text("評讀完成！")
     if 'rob_results' in st.session_state and st.session_state.rob_results is not None: st.dataframe(st.session_state.rob_results)
 
-# Tab 4: Data Extraction
+# Tab 4: Data Extraction (Batch)
 with tab4:
-    st.header("📊 數據萃取 & 特徵總表")
+    st.header("📊 批次數據萃取 & 特徵總表")
     
-    # Table 1 Button (Decoupled)
+    # Button: Generate Table 1
     if st.button("📄 根據上傳的 PDF 生成文獻特徵總表 (Table 1)"):
         if st.session_state.uploaded_files:
             progress_bar = st.progress(0); status_text = st.empty(); table1_rows = []
@@ -605,55 +625,73 @@ with tab4:
         st.table(st.session_state.characteristics_table)
 
     st.markdown("---")
-    st.subheader("各 Outcome 數據萃取")
+    st.subheader("各 Outcome 數據萃取設定")
+
+    # 1. Prepare List of Outcomes
+    outcomes = []
+    if st.session_state.rob_primary: outcomes.append(st.session_state.rob_primary)
+    if st.session_state.rob_secondary:
+        outcomes.extend([s.strip() for s in st.session_state.rob_secondary.split(',') if s.strip()])
     
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        # Dynamic Outcome List
-        r_p = st.session_state.get('rob_primary', '')
-        r_s = st.session_state.get('rob_secondary', '')
-        opts = []
-        if r_p: opts.append(r_p)
-        if r_s: opts.extend([s.strip() for s in r_s.split(',') if s.strip()])
-        target_outcome = st.selectbox("選擇 Outcome", opts if opts else ["請先設定 Outcome"])
-    with c2:
-        data_type = st.radio("資料型態", ["Binary", "Continuous"], key="dtype_radio")
+    if not outcomes:
+        st.warning("請先在 RoB 分頁設定 Outcome，或手動同步。")
+    else:
+        # 2. Config UI for each outcome
+        configs = {}
+        for out in outcomes:
+            c1, c2 = st.columns([3, 1])
+            c1.markdown(f"**Outcome:** {out}")
+            # Use unique key for each radio
+            configs[out] = c2.radio(f"Type for {out}", ["Binary", "Continuous"], key=f"type_{out}", horizontal=True)
+        
+        # 3. Batch Extract Button
+        if st.button("🚀 一鍵統整萃取 (Batch Extract All)") and api_key and st.session_state.uploaded_files:
+            progress_bar = st.progress(0); status_text = st.empty()
+            
+            total_steps = len(outcomes) * len(st.session_state.uploaded_files)
+            current_step = 0
+            
+            for out in outcomes:
+                dtype = configs[out]
+                extract_rows = []
+                
+                for file in st.session_state.uploaded_files:
+                    status_text.text(f"萃取中 ({out}): {file.name} ...")
+                    try:
+                        pdf_reader = PdfReader(file); text_content = "".join([p.extract_text() for p in pdf_reader.pages])
+                    except: continue
+                    
+                    if dtype == "Binary":
+                        prompt = f"Task: Extract Binary Data (Events/Total) for '{out}'. StudyID MUST be 'Author Year'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total. Text: {text_content[:25000]}"
+                        cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
+                    else:
+                        prompt = f"Task: Extract Continuous Data (Mean/SD) for '{out}'. StudyID MUST be 'Author Year'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total. Text: {text_content[:25000]}"
+                        cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
+                    
+                    try:
+                        response = model.generate_content(prompt)
+                        for line in response.text.strip().split('\n'):
+                            if '|' in line and 'StudyID' not in line:
+                                c = [x.strip() for x in line.split('|')]
+                                if len(c) == len(cols): extract_rows.append(c)
+                    except: pass
+                    
+                    current_step += 1
+                    progress_bar.progress(current_step / total_steps)
+                
+                if extract_rows:
+                    df_ex = pd.DataFrame(extract_rows, columns=cols)
+                    st.session_state.extracted_datasets[out] = df_ex
+                    st.session_state.dataset_types[out] = dtype
+            
+            st.success("所有 Outcome 萃取完成！請查看下方分頁。")
 
-    if st.button("🔍 萃取此 Outcome 數據") and api_key and st.session_state.uploaded_files:
-        progress_bar = st.progress(0); status_text = st.empty(); extract_rows = []
-        files = st.session_state.uploaded_files
-        for i, file in enumerate(files):
-            status_text.text(f"萃取中：{file.name} ...")
-            try:
-                pdf_reader = PdfReader(file); text_content = "".join([p.extract_text() for p in pdf_reader.pages])
-            except: continue
-            if data_type == "Binary":
-                prompt = f"Task: Extract Binary Data (Events/Total) for '{target_outcome}'. StudyID MUST be 'Author Year' (e.g. Ayhan 2006). Format: StudyID | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total. Text: {text_content[:25000]}"
-                cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
-            else:
-                prompt = f"Task: Extract Continuous Data (Mean/SD) for '{target_outcome}'. StudyID MUST be 'Author Year'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total. Text: {text_content[:25000]}"
-                cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
-            try:
-                response = model.generate_content(prompt)
-                for line in response.text.strip().split('\n'):
-                    if '|' in line and 'StudyID' not in line:
-                        c = [x.strip() for x in line.split('|')]
-                        if len(c) == len(cols): extract_rows.append(c)
-            except: pass
-            progress_bar.progress((i + 1) / len(files))
-        if extract_rows:
-            df_ex = pd.DataFrame(extract_rows, columns=cols)
-            # Save to dict
-            st.session_state.extracted_datasets[target_outcome] = df_ex
-            st.session_state.dataset_types[target_outcome] = data_type
-            status_text.text(f"Outcome '{target_outcome}' 萃取完成！")
-
-    # Display extracted tabs
+    # 4. Display Results in Tabs
     if st.session_state.extracted_datasets:
         tabs = st.tabs(list(st.session_state.extracted_datasets.keys()))
         for i, (k, v) in enumerate(st.session_state.extracted_datasets.items()):
             with tabs[i]:
-                st.write(f"**Type:** {st.session_state.dataset_types[k]}")
+                st.info(f"Data Type: **{st.session_state.dataset_types[k]}**")
                 st.dataframe(v)
 
 # Tab 5: Stats
