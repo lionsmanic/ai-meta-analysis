@@ -13,13 +13,13 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (English PICO Forced)")
-st.markdown("### 整合 **PICO (自動轉譯英文)** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Stability Fixed)")
+st.markdown("### 整合 **PICO** ➔ 智能篩選 ➔ RoB 評讀 ➔ 數據萃取 ➔ 統計圖表")
 
 # --- 初始化 Session State ---
 keys_to_init = [
     'p_val', 'i_val', 'c_val', 'o1_val', 'o2_val', 
-    'p_area', 'i_area', 'c_area', 'o1_area', 'o2_area', # Widget Keys
+    'p_area', 'i_area', 'c_area', 'o1_area', 'o2_area',
     'rob_primary_input', 'rob_secondary_input',
     'included_pmids', 'included_studies', 
     'data_extract_results', 'current_data_type',
@@ -59,10 +59,11 @@ class MetaAnalysisEngine:
             self._clean_and_calculate_effect_sizes()
             if not self.df.empty and 'TE' in self.df.columns:
                 self._run_random_effects()
+                # 只有研究數 >= 3 才跑診斷，避免錯誤
                 if len(self.df) >= 3:
                     self._calculate_influence_diagnostics()
         except Exception as e:
-            st.error(f"統計運算警告: {e}")
+            st.error(f"統計運算核心警告: {e}")
 
     def _clean_and_calculate_effect_sizes(self):
         df = self.raw_df.copy()
@@ -102,18 +103,28 @@ class MetaAnalysisEngine:
 
     def _run_random_effects(self):
         k = len(self.df)
-        if k <= 1: return
-        w_fixed = 1 / (self.df['seTE']**2)
-        te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
-        Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
-        df_Q = k - 1
-        p_Q = 1 - stats.chi2.cdf(Q, df_Q)
-        C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
-        tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
-        I2 = max(0, (Q - df_Q) / Q) * 100 if Q > 0 else 0
-        w_random = 1 / (self.df['seTE']**2 + tau2)
-        te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
-        se_random = np.sqrt(1 / np.sum(w_random))
+        if k == 0: return
+        
+        # BUG FIX: Handle single study case (k=1)
+        if k == 1:
+            # 單篇研究無法計算異質性，直接使用該篇數據作為 Pooled
+            te_random = self.df['TE'].iloc[0]
+            se_random = self.df['seTE'].iloc[0]
+            tau2 = 0.0; I2 = 0.0; Q = 0.0; p_Q = 1.0
+            w_random = np.array([1.0]) # Weight 100%
+        else:
+            # DerSimonian-Laird Method (k >= 2)
+            w_fixed = 1 / (self.df['seTE']**2)
+            te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
+            Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
+            df_Q = k - 1
+            p_Q = 1 - stats.chi2.cdf(Q, df_Q)
+            C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
+            tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
+            I2 = max(0, (Q - df_Q) / Q) * 100 if Q > 0 else 0
+            w_random = 1 / (self.df['seTE']**2 + tau2)
+            te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
+            se_random = np.sqrt(1 / np.sum(w_random))
         
         self.results = {
             'TE_pooled': te_random, 'seTE_pooled': se_random,
@@ -127,27 +138,40 @@ class MetaAnalysisEngine:
             self.influence_df = pd.DataFrame()
             return
         k = len(self.df); res = self.results
+        
+        # 需要至少 2 篇才能做 Leave-one-out
+        if k < 2: 
+            self.influence_df = pd.DataFrame()
+            return
+
         original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
+        
         for i in self.df.index:
             try:
                 subset = self.df.drop(i)
                 if len(subset) == 0: continue
+                
                 w_f = 1 / (subset['seTE']**2)
                 te_f = np.sum(w_f * subset['TE']) / np.sum(w_f)
                 Q_d = np.sum(w_f * (subset['TE'] - te_f)**2)
                 C_d = np.sum(w_f) - np.sum(w_f**2) / np.sum(w_f)
                 tau2_d = max(0, (Q_d - (k - 2)) / C_d) if C_d > 0 else 0
+                
                 w_r = 1 / (subset['seTE']**2 + tau2_d)
                 te_d = np.sum(w_r * subset['TE']) / np.sum(w_r)
                 se_d = np.sqrt(1 / np.sum(w_r))
+                
                 hat = self.df.loc[i, 'weight'] / 100.0
                 resid = self.df.loc[i, 'TE'] - original_te
                 var_resid = self.df.loc[i, 'seTE']**2 + original_tau2
                 rstudent = resid / np.sqrt(var_resid)
-                dffits = np.sqrt(hat / (1 - hat)) * rstudent if hat < 1 else 0
-                cook_d = (rstudent**2 * hat) / (1 - hat) if hat < 1 else 0
+                if hat >= 1: dffits = 0; cook_d = 0
+                else:
+                    dffits = np.sqrt(hat / (1 - hat)) * rstudent
+                    cook_d = (rstudent**2 * hat) / (1 - hat)
                 cov_r = (se_d**2) / (res['seTE_pooled']**2)
+
                 influence_data.append({
                     'Study ID': self.df.loc[i, 'Study ID'],
                     'TE': self.df.loc[i, 'TE'], 
@@ -208,7 +232,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals = df['TE']; lows = df['lower']; ups = df['upper']
+        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -430,9 +454,11 @@ with st.sidebar:
         st.success("✅ 已從 Secrets 讀取 API Key")
     else:
         api_key = st.text_input("請輸入您的 Google Gemini API Key", type="password")
+    
     st.divider()
     st.header("1. 研究主題設定")
     st.info(f"當前主題：\n{st.session_state.get('research_topic', '未設定')}")
+    
     if api_key:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-pro')
@@ -452,10 +478,7 @@ with tab1:
                 try:
                     prompt = f"""
                     Analyze the research topic: '{st.session_state.research_topic}'.
-                    Identify P (Population), I (Intervention), C (Comparison), Primary Outcome, and Secondary Outcome.
-                    IMPORTANT: 
-                    1. Regardless of the input language, THE OUTPUT MUST BE IN ENGLISH.
-                    2. Translate Chinese concepts to standard English medical terms.
+                    Identify P, I, C, Primary Outcome, Secondary Outcome.
                     Return ONLY a single line separated by pipes (|):
                     P | I | C | O1 | O2
                     Example: Stroke patients | Acupuncture | Sham acupuncture | Motor function | Quality of life
@@ -465,17 +488,10 @@ with tab1:
                     if len(parts) >= 5:
                         st.session_state.p_val = parts[0]; st.session_state.i_val = parts[1]; st.session_state.c_val = parts[2]
                         st.session_state.o1_val = parts[3]; st.session_state.o2_val = parts[4]
-                        # Force Update Widget Keys
-                        st.session_state['p_area'] = parts[0]
-                        st.session_state['i_area'] = parts[1]
-                        st.session_state['c_area'] = parts[2]
-                        st.session_state['o1_area'] = parts[3]
-                        st.session_state['o2_area'] = parts[4]
-                        # Force Sync RoB
-                        st.session_state['rob_primary_input'] = parts[3]
-                        st.session_state['rob_secondary_input'] = parts[4]
-                        st.session_state.rob_primary = parts[3]
-                        st.session_state.rob_secondary = parts[4]
+                        st.session_state['p_area'] = parts[0]; st.session_state['i_area'] = parts[1]
+                        st.session_state['c_area'] = parts[2]; st.session_state['o1_area'] = parts[3]; st.session_state['o2_area'] = parts[4]
+                        st.session_state['rob_primary_input'] = parts[3]; st.session_state['rob_secondary_input'] = parts[4]
+                        st.session_state.rob_primary = parts[3]; st.session_state.rob_secondary = parts[4]
                         st.rerun()
                 except Exception as e: st.error(f"AI 生成失敗: {e}")
         else: st.warning("請先輸入 API Key")
@@ -576,7 +592,7 @@ with tab3:
     
     c1, c2 = st.columns([3, 1])
     with c2:
-        if st.button("🔄 從 PICO 同步 Outcomes"):
+        if st.button("🔄 從 PICO 同步"):
             st.session_state['rob_primary_input'] = st.session_state.get('o1_area', '')
             st.session_state['rob_secondary_input'] = st.session_state.get('o2_area', '')
             st.session_state.rob_primary = st.session_state.get('o1_area', '')
@@ -602,14 +618,11 @@ with tab3:
                 text_content = ""
                 for page in pdf_reader.pages: text_content += page.extract_text()
             except: continue
-            
             sec_list = [s.strip() for s in secondary_outcome.split(',') if s.strip()]
             sec_str = ", ".join(sec_list)
-            
             prompt = f"""
-            Role: Expert Reviewer (RoB 2.0). 
-            Outcomes: 1. Primary: {primary_outcome}, 2. Secondary List: {sec_str}
-            Task: Create SEPARATE row for Primary and EACH Secondary outcome found.
+            Role: Expert Reviewer (RoB 2.0). Outcomes: 1. Primary: {primary_outcome}, 2. Secondary List: {sec_str}
+            Task: Create SEPARATE row for Primary and EACH Secondary.
             Format: Pipe separated: StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | Overall | Reasoning
             (Values: Low, Some concerns, High. Reason: Trad-Chinese).
             Text: {text_content[:25000]}
@@ -641,13 +654,11 @@ with tab3:
 with tab4:
     st.header("📊 數據萃取")
     if 'data_extract_results' not in st.session_state: st.session_state.data_extract_results = None
-    
     col_ex_outcome, col_ex_type = st.columns([2, 1])
     with col_ex_outcome:
         c1, c2 = st.columns([3, 1])
         with c2:
             if st.button("🔄 更新選單"): st.rerun()
-        
         r_p = st.session_state.get('rob_primary_input', st.session_state.rob_primary)
         r_s = st.session_state.get('rob_secondary_input', st.session_state.rob_secondary)
         opts = []
@@ -668,14 +679,12 @@ with tab4:
                 text_content = ""
                 for page in pdf_reader.pages: text_content += page.extract_text()
             except: continue
-            
             if "Binary" in data_type:
                 prompt = f"Task: Extract Binary Data (Events/Total) for '{target_outcome}'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total\nText: {text_content[:25000]}"
                 cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
             else:
                 prompt = f"Task: Extract Continuous Data (Mean/SD) for '{target_outcome}'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total\nText: {text_content[:25000]}"
                 cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
-            
             try:
                 response = model.generate_content(prompt)
                 for line in response.text.strip().split('\n'):
@@ -684,12 +693,10 @@ with tab4:
                         if len(c) == len(cols): extract_rows.append(c)
             except: pass
             progress_bar.progress((i + 1) / len(files))
-            
         if extract_rows:
             st.session_state.data_extract_results = pd.DataFrame(extract_rows, columns=cols)
             st.session_state.current_data_type = data_type
             status_text.text("萃取完成！")
-    
     if st.session_state.data_extract_results is not None:
         st.dataframe(st.session_state.data_extract_results)
 
@@ -700,11 +707,9 @@ with tab5:
         df_extract = st.session_state.data_extract_results
         dtype = st.session_state.get('current_data_type', "Binary")
         ma = MetaAnalysisEngine(df_extract, dtype)
-        
         if not ma.df.empty:
             st.subheader("1. 🌲 專業森林圖")
             st.pyplot(plot_forest_professional(ma))
-            
             c1, c2 = st.columns(2)
             with c1:
                 st.subheader("2. 🌪️ 漏斗圖")
@@ -713,10 +718,8 @@ with tab5:
                 st.subheader("3. 📊 Baujat Plot")
                 if not ma.influence_df.empty: st.pyplot(plot_baujat(ma.influence_df))
                 else: st.info("研究數不足 (<3)。")
-            
             st.subheader("4. 📉 敏感度分析")
             if not ma.influence_df.empty: st.pyplot(plot_leave_one_out_professional(ma))
-            
             st.subheader("5. 🔍 診斷矩陣")
             if not ma.influence_df.empty: st.pyplot(plot_influence_diagnostics_grid(ma))
     else:
