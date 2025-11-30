@@ -13,8 +13,8 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Multi-Outcome & Table 1)")
-st.markdown("### 整合 **PICO** ➔ 智能篩選 ➔ RoB 評讀 ➔ **特徵總表 & 多重數據萃取** ➔ **分組統計圖表**")
+st.title("🧬 AI-Meta Analysis Pro (Multi-Type Extraction)")
+st.markdown("### 整合 PICO ➔ 智能篩選 ➔ RoB 評讀 ➔ **特徵總表 & 彈性數據萃取** ➔ 統計圖表")
 
 # --- 初始化 Session State ---
 keys_to_init = [
@@ -22,18 +22,20 @@ keys_to_init = [
     'p_area', 'i_area', 'c_area', 'o1_area', 'o2_area',
     'rob_primary_input', 'rob_secondary_input',
     'included_pmids', 'included_studies', 
-    'extracted_datasets', # 改用 Dictionary 儲存多個 Outcome 的數據 {'OutcomeName': df}
-    'characteristics_table', # 儲存特徵總表 Table 1
-    'current_data_types', # 儲存每個 Outcome 的數據型態 {'OutcomeName': 'Binary'}
-    'research_topic'
+    'extracted_datasets', # 字典: {'Outcome名稱': DataFrame}
+    'dataset_types',      # 字典: {'Outcome名稱': 'Binary' or 'Continuous'}
+    'characteristics_table', # Table 1 DataFrame
+    'research_topic',
+    'uploaded_files'
 ]
 
 for key in keys_to_init:
     if key not in st.session_state:
         if key == 'research_topic': st.session_state[key] = "Acupuncture for stroke recovery"
         elif key == 'extracted_datasets': st.session_state[key] = {}
-        elif key == 'current_data_types': st.session_state[key] = {}
+        elif key == 'dataset_types': st.session_state[key] = {}
         elif key == 'characteristics_table': st.session_state[key] = None
+        elif key == 'uploaded_files': st.session_state[key] = []
         elif 'val' in key or 'area' in key or 'input' in key: st.session_state[key] = ""
         else: st.session_state[key] = []
 
@@ -67,11 +69,11 @@ class MetaAnalysisEngine:
                 if len(self.df) >= 3:
                     self._calculate_influence_diagnostics()
         except Exception as e:
-            st.error(f"統計運算核心警告: {e}")
+            st.error(f"統計運算警告: {e}")
 
     def _clean_and_calculate_effect_sizes(self):
         df = self.raw_df.copy()
-        # 確保 Study ID 是字串
+        # 確保 ID 是字串
         df['Study ID'] = df['Study ID'].astype(str)
         
         cols_to_numeric = [c for c in df.columns if c not in ['Study ID', 'Population', 'Tx Details', 'Ctrl Details']]
@@ -110,25 +112,18 @@ class MetaAnalysisEngine:
 
     def _run_random_effects(self):
         k = len(self.df)
-        if k == 0: return
-        
-        if k == 1:
-            te_random = self.df['TE'].iloc[0]
-            se_random = self.df['seTE'].iloc[0]
-            tau2 = 0.0; I2 = 0.0; Q = 0.0; p_Q = 1.0
-            w_random = np.array([1.0])
-        else:
-            w_fixed = 1 / (self.df['seTE']**2)
-            te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
-            Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
-            df_Q = k - 1
-            p_Q = 1 - stats.chi2.cdf(Q, df_Q)
-            C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
-            tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
-            I2 = max(0, (Q - df_Q) / Q) * 100 if Q > 0 else 0
-            w_random = 1 / (self.df['seTE']**2 + tau2)
-            te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
-            se_random = np.sqrt(1 / np.sum(w_random))
+        if k <= 1: return
+        w_fixed = 1 / (self.df['seTE']**2)
+        te_fixed = np.sum(w_fixed * self.df['TE']) / np.sum(w_fixed)
+        Q = np.sum(w_fixed * (self.df['TE'] - te_fixed)**2)
+        df_Q = k - 1
+        p_Q = 1 - stats.chi2.cdf(Q, df_Q)
+        C = np.sum(w_fixed) - np.sum(w_fixed**2) / np.sum(w_fixed)
+        tau2 = max(0, (Q - df_Q) / C) if C > 0 else 0
+        I2 = max(0, (Q - df_Q) / Q) * 100 if Q > 0 else 0
+        w_random = 1 / (self.df['seTE']**2 + tau2)
+        te_random = np.sum(w_random * self.df['TE']) / np.sum(w_random)
+        se_random = np.sqrt(1 / np.sum(w_random))
         
         self.results = {
             'TE_pooled': te_random, 'seTE_pooled': se_random,
@@ -140,38 +135,27 @@ class MetaAnalysisEngine:
     def _calculate_influence_diagnostics(self):
         if self.df.empty or 'TE' not in self.df.columns: return
         k = len(self.df); res = self.results
-        if k < 2: return
-
         original_te = res['TE_pooled']; original_tau2 = res['tau2']
         influence_data = []
-        
         for i in self.df.index:
             try:
                 subset = self.df.drop(i)
                 if len(subset) == 0: continue
-                
-                w_f = 1 / (subset['seTE']**2)
-                te_f = np.sum(w_f * subset['TE']) / np.sum(w_f)
-                Q_d = np.sum(w_f * (subset['TE'] - te_f)**2)
-                C_d = np.sum(w_f) - np.sum(w_f**2) / np.sum(w_f)
+                w_f = 1 / (subset['seTE']**2); te_f = np.sum(w_f * subset['TE']) / np.sum(w_f)
+                Q_d = np.sum(w_f * (subset['TE'] - te_f)**2); C_d = np.sum(w_f) - np.sum(w_f**2) / np.sum(w_f)
                 tau2_d = max(0, (Q_d - (k - 2)) / C_d) if C_d > 0 else 0
                 w_r = 1 / (subset['seTE']**2 + tau2_d)
                 te_d = np.sum(w_r * subset['TE']) / np.sum(w_r)
                 se_d = np.sqrt(1 / np.sum(w_r))
-                
                 hat = self.df.loc[i, 'weight'] / 100.0
                 resid = self.df.loc[i, 'TE'] - original_te
                 var_resid = self.df.loc[i, 'seTE']**2 + original_tau2
                 rstudent = resid / np.sqrt(var_resid)
-                if hat >= 1: dffits = 0; cook_d = 0
-                else:
-                    dffits = np.sqrt(hat / (1 - hat)) * rstudent
-                    cook_d = (rstudent**2 * hat) / (1 - hat)
+                dffits = np.sqrt(hat / (1 - hat)) * rstudent if hat < 1 else 0
+                cook_d = (rstudent**2 * hat) / (1 - hat) if hat < 1 else 0
                 cov_r = (se_d**2) / (res['seTE_pooled']**2)
-
                 influence_data.append({
-                    'Study ID': self.df.loc[i, 'Study ID'],
-                    'TE': self.df.loc[i, 'TE'], 
+                    'Study ID': self.df.loc[i, 'Study ID'], 'TE': self.df.loc[i, 'TE'],
                     'rstudent': rstudent, 'dffits': dffits, 'cook.d': cook_d, 'cov.r': cov_r,
                     'tau2.del': tau2_d, 'QE.del': Q_d, 'hat': hat, 'weight': self.df.loc[i, 'weight'],
                     'TE.del': te_d, 'lower.del': te_d - 1.96 * se_d, 'upper.del': te_d + 1.96 * se_d
@@ -179,29 +163,22 @@ class MetaAnalysisEngine:
             except: continue
         self.influence_df = pd.DataFrame(influence_data)
 
-    def get_influence_diagnostics(self):
-        return self.influence_df
+    def get_influence_diagnostics(self): return self.influence_df
 
-# --- 繪圖函式 (Perfect Layout) ---
-def plot_forest_professional(ma_engine, outcome_name):
+# --- 繪圖函式 (專業版) ---
+def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
-    
     plt.rcParams.update({'font.size': 12, 'figure.dpi': 300, 'font.family': 'sans-serif'})
-    n_studies = len(df)
-    fig_height = n_studies * 0.4 + 3.0 # 增加一點高度給標題
-    fig, ax = plt.subplots(figsize=(14, fig_height))
+    n_studies = len(df); fig_height = n_studies * 0.4 + 2.5 
+    fig, ax = plt.subplots(figsize=(12, fig_height))
     n_rows = n_studies + 4
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
-    # Add Outcome Title
-    ax.text(0, n_rows, f"Outcome: {outcome_name}", fontsize=14, fontweight='bold', ha='left')
-
     x_study = 0; x_tx_ev = 31; x_tx_tot = 37; x_ctrl_ev = 45; x_ctrl_tot = 51
     x_plot_start = 55; x_plot_end = 73; x_rr = 79; x_ci = 89; x_wt = 100
     y_head = n_rows - 1
     ax.text(x_study, y_head, "Study", fontweight='bold', ha='left')
-    
     if is_binary:
         ax.text((x_tx_ev+x_tx_tot)/2, y_head+0.6, "Tx", fontweight='bold', ha='center')
         ax.text((x_ctrl_ev+x_ctrl_tot)/2, y_head+0.6, "Ctrl", fontweight='bold', ha='center')
@@ -212,7 +189,6 @@ def plot_forest_professional(ma_engine, outcome_name):
     else:
         ax.text((x_tx_ev+x_tx_tot)/2, y_head, "Tx (Mean/SD)", fontweight='bold', ha='center')
         ax.text((x_ctrl_ev+x_ctrl_tot)/2, y_head, "Ctrl (Mean/SD)", fontweight='bold', ha='center')
-    
     ax.text((x_plot_start+x_plot_end)/2, y_head, f"{measure}", fontweight='bold', ha='center')
     ax.text(x_rr, y_head, measure, fontweight='bold', ha='center')
     ax.text(x_ci, y_head, "95% CI", fontweight='bold', ha='center')
@@ -222,13 +198,10 @@ def plot_forest_professional(ma_engine, outcome_name):
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
-        center = 1.0
-        all_v = list(vals) + list(lows) + list(ups)
+        center = 1.0; all_v = list(vals)+list(lows)+list(ups)
         min_v = min(min(all_v), pool_low); max_v = max(max(all_v), pool_up)
-        d_min = abs(np.log(min_v)-np.log(1)) if min_v>0 else 5
-        d_max = abs(np.log(max_v)-np.log(1))
-        max_dist = max(d_min, d_max) * 1.1
-        v_min = np.exp(-max_dist); v_max = np.exp(max_dist)
+        d_min = abs(np.log(min_v)-np.log(1)) if min_v>0 else 5; d_max = abs(np.log(max_v)-np.log(1))
+        md = max(d_min, d_max)*1.1; v_min = np.exp(-md); v_max = np.exp(md)
         if v_min < 0.01: v_min=0.01
         if v_max > 100: v_max=100
         def transform(v):
@@ -237,10 +210,8 @@ def plot_forest_professional(ma_engine, outcome_name):
     else:
         vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
-        center = 0.0
-        all_v = list(vals)+list(lows)+list(ups)
-        max_dist = max(abs(min(all_v)), abs(max(all_v)))*1.1
-        v_min = -max_dist; v_max = max_dist
+        center = 0.0; all_v = list(vals)+list(lows)+list(ups)
+        md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
         def transform(v): return x_plot_start + (v-v_min)/(v_max-v_min)*(x_plot_end-x_plot_start)
 
     for i, row in df.iterrows():
@@ -296,37 +267,53 @@ def plot_forest_professional(ma_engine, outcome_name):
     plt.tight_layout()
     return fig
 
-# (其他 plot 函式保持不變，為節省空間略，實作時需包含 plot_leave_one_out 等)
+# (plot_leave_one_out, plot_funnel, plot_baujat, plot_influence... 省略以節省空間，請保留)
 def transform_none(v): return v 
+
 def plot_funnel(ma_engine):
     df = ma_engine.df; res = ma_engine.results; te_pooled = res['TE_pooled']
     plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.scatter(df['TE'], df['seTE'], color='blue', alpha=0.6, edgecolors='k', zorder=3)
     max_se = max(df['seTE']) * 1.1
-    x_tri = [te_pooled - 1.96*max_se, te_pooled, te_pooled + 1.96*max_se]; y_tri = [max_se, 0, max_se]
+    x_tri = [te_pooled - 1.96*max_se, te_pooled, te_pooled + 1.96*max_se]
+    y_tri = [max_se, 0, max_se]
     ax.fill(x_tri, y_tri, color='gray', alpha=0.1)
     ax.plot([te_pooled, te_pooled - 1.96*max_se], [0, max_se], 'k--', linewidth=0.8)
     ax.plot([te_pooled, te_pooled + 1.96*max_se], [0, max_se], 'k--', linewidth=0.8)
     ax.axvline(x=te_pooled, color='red', linestyle='--')
-    ax.set_ylim(max_se, 0); ax.set_ylabel("Standard Error"); ax.set_xlabel(ma_engine.effect_label); ax.set_title("Funnel Plot")
+    ax.set_ylim(max_se, 0)
+    ax.set_ylabel("Standard Error")
+    ax.set_xlabel(ma_engine.effect_label)
+    ax.set_title("Funnel Plot")
     return fig
+
 def plot_baujat(diag_df):
     if diag_df.empty: return None
     plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
     fig, ax = plt.subplots(figsize=(6, 5))
-    x = diag_df['rstudent'] ** 2; y = abs(diag_df['TE'] - diag_df['TE.del'])
+    x = diag_df['rstudent'] ** 2 
+    y = abs(diag_df['TE'] - diag_df['TE.del'])
     ax.scatter(x, y, color='purple', s=80, alpha=0.7)
-    for i, txt in enumerate(diag_df['Study ID']): ax.annotate(txt, (x[i], y[i]), xytext=(3, 3), textcoords='offset points', fontsize=8)
-    ax.set_xlabel("Contribution to Heterogeneity"); ax.set_ylabel("Influence on Pooled Result"); ax.set_title("Baujat Plot"); ax.grid(True, linestyle='--', alpha=0.5)
+    for i, txt in enumerate(diag_df['Study ID']):
+        ax.annotate(txt, (x[i], y[i]), xytext=(3, 3), textcoords='offset points', fontsize=8)
+    ax.set_xlabel("Contribution to Heterogeneity")
+    ax.set_ylabel("Influence on Pooled Result")
+    ax.set_title("Baujat Plot")
+    ax.grid(True, linestyle='--', alpha=0.5)
     return fig
+
 def plot_influence_diagnostics_grid(ma_engine):
     df = ma_engine.influence_df
     if df.empty: return None
     k = len(df); x = np.arange(1, k + 1)
-    metrics = [('rstudent', 'Studentized Residuals', [-2, 2]), ('dffits', 'DFFITS', [2 * np.sqrt(2/k)]), ('cook.d', "Cook's Distance", [4/k]), ('cov.r', 'Covariance Ratio', [1]), ('tau2.del', 'Leave-One-Out Tau²', [ma_engine.results['tau2']]), ('QE.del', 'Leave-One-Out Q', [ma_engine.results['Q'] - (k-1)]), ('hat', 'Hat Values', [2/k]), ('weight', 'Weight (%)', [100/k])]
+    metrics = [('rstudent', 'Studentized Residuals', [-2, 2]), ('dffits', 'DFFITS', [2 * np.sqrt(2/k)]), 
+               ('cook.d', "Cook's Distance", [4/k]), ('cov.r', 'Covariance Ratio', [1]),
+               ('tau2.del', 'Leave-One-Out Tau²', [ma_engine.results['tau2']]), ('QE.del', 'Leave-One-Out Q', [ma_engine.results['Q'] - (k-1)]), 
+               ('hat', 'Hat Values', [2/k]), ('weight', 'Weight (%)', [100/k])]
     plt.rcParams.update({'font.size': 8, 'figure.dpi': 200})
-    fig, axes = plt.subplots(4, 2, figsize=(12, 14)); axes = axes.flatten()
+    fig, axes = plt.subplots(4, 2, figsize=(12, 14))
+    axes = axes.flatten()
     for i, (col, title, hlines) in enumerate(metrics):
         ax = axes[i]; vals = df[col]
         ax.plot(x, vals, 'o-', color='black', markerfacecolor='gray', markersize=4, linewidth=1)
@@ -335,6 +322,7 @@ def plot_influence_diagnostics_grid(ma_engine):
         ax.set_title(title, fontweight='bold'); ax.set_xticks(x); ax.set_xticklabels(range(1, k+1))
     plt.tight_layout()
     return fig
+
 def plot_leave_one_out_professional(ma_engine):
     inf_df = ma_engine.influence_df
     if inf_df.empty: return None
@@ -387,10 +375,50 @@ def plot_leave_one_out_professional(ma_engine):
     plt.tight_layout()
     return fig
 
-# --- Helper Functions (Traffic Light & Summary) - Placeholder to save space, same as before
-def plot_traffic_light(df, title): return plt.figure()
-def plot_summary_bar(df, title): return plt.figure()
+def plot_traffic_light(df, title):
+    color_map = {'Low': '#2E7D32', 'Some concerns': '#F9A825', 'High': '#C62828'}
+    studies = df['Study ID'].tolist()
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
+    fig, ax = plt.subplots(figsize=(10, len(studies) * 0.8 + 2))
+    for y, study in enumerate(studies):
+        for x, domain in enumerate(domains):
+            risk_val = df[df['Study ID'] == study][DOMAIN_MAPPING[domain]].values[0]
+            risk = str(risk_val).strip()
+            color = '#808080'; symbol = '?'
+            if 'Low' in risk: color = color_map['Low']; symbol = '+'
+            elif 'High' in risk: color = color_map['High']; symbol = '-'
+            elif 'Some' in risk: color = color_map['Some concerns']; symbol = '!'
+            circle = mpatches.Circle((x, len(studies) - 1 - y), 0.4, color=color)
+            ax.add_patch(circle)
+            ax.text(x, len(studies) - 1 - y, symbol, ha='center', va='center', color='white', fontweight='bold', fontsize=12)
+    ax.set_xlim(-0.5, len(domains) - 0.5); ax.set_ylim(-0.5, len(studies) - 0.5)
+    ax.set_xticks(range(len(plot_labels))); ax.set_xticklabels(plot_labels, fontsize=10, fontweight='bold')
+    ax.set_yticks(range(len(studies))); ax.set_yticklabels(studies[::-1], fontsize=10)
+    for spine in ax.spines.values(): spine.set_visible(False)
+    ax.set_title(f"RoB 2.0 Traffic Light Plot: {title}", pad=20, fontsize=14, fontweight='bold')
+    patches = [mpatches.Patch(color=v, label=k) for k, v in color_map.items()]
+    ax.legend(handles=patches, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3, frameon=False)
+    return fig
 
+def plot_summary_bar(df, title):
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
+    data = []
+    for domain in domains:
+        col_name = DOMAIN_MAPPING[domain]
+        counts = df[col_name].apply(lambda x: 'Low' if 'Low' in str(x) else ('High' if 'High' in str(x) else 'Some concerns')).value_counts()
+        total = len(df)
+        if total == 0: total = 1
+        data.append([(counts.get('Low', 0)/total)*100, (counts.get('Some concerns', 0)/total)*100, (counts.get('High', 0)/total)*100])
+    df_plot = pd.DataFrame(data, columns=['Low', 'Some concerns', 'High'], index=plot_labels)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    colors = ['#2E7D32', '#F9A825', '#C62828']
+    df_plot.plot(kind='barh', stacked=True, color=colors, ax=ax, width=0.7)
+    ax.set_xlim(0, 100); ax.set_xlabel("Percentage of Studies (%)"); ax.set_title(f"Risk of Bias Summary: {title}", fontsize=14, fontweight='bold')
+    ax.invert_yaxis(); ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), frameon=False)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+    return fig
 
 # --- Sidebar: 設定與 API Key ---
 with st.sidebar:
@@ -469,9 +497,10 @@ with tab1:
 
 # Tab 2: Screening
 with tab2:
-    st.header("📂 智能文獻篩選 & 特徵摘要")
+    st.header("📂 智能文獻篩選 (PMID Screening)")
     pmid_input = st.text_area("請輸入 PMIDs", "16490324, 16380290, 10793055, 2307412", height=150)
-    if st.button("🚀 開始篩選") and api_key and pmid_input:
+    if 'included_pmids' not in st.session_state: st.session_state.included_pmids = []
+    if st.button("🚀 開始智能篩選") and api_key and pmid_input:
         pmid_list = [p.strip() for p in pmid_input.replace('\n', ',').split(',') if p.strip()]
         progress_bar = st.progress(0); status_text = st.empty(); results = []
         try:
@@ -552,46 +581,57 @@ with tab3:
 with tab4:
     st.header("📊 數據萃取 & 特徵總表")
     
-    # 顯示特徵總表 (Table 1)
-    if st.button("📄 生成文獻特徵總表 (Table 1)"):
-        if st.session_state.characteristics_table is not None and not st.session_state.characteristics_table.empty:
-            st.subheader("Table 1: Characteristics of Included Studies")
-            # Select specific columns
-            disp_cols = ['Study', 'Design', 'Population', 'Intervention', 'Control', 'Outcomes']
-            # Ensure columns exist
-            avail_cols = [c for c in disp_cols if c in st.session_state.characteristics_table.columns]
-            st.table(st.session_state.characteristics_table[avail_cols])
-        else:
-            st.warning("請先在「文獻篩選」分頁完成篩選。")
-            
+    # Table 1 Button (Decoupled)
+    if st.button("📄 根據上傳的 PDF 生成文獻特徵總表 (Table 1)"):
+        if st.session_state.uploaded_files:
+            progress_bar = st.progress(0); status_text = st.empty(); table1_rows = []
+            for i, file in enumerate(st.session_state.uploaded_files):
+                status_text.text(f"分析特徵中：{file.name} ...")
+                try:
+                    pdf_reader = PdfReader(file); text = "".join([p.extract_text() for p in pdf_reader.pages[:5]])
+                    prompt = f"Task: Extract study characteristics. Format: StudyID (Author Year) | Design | Population (N) | Intervention | Control | Outcomes. Text: {text[:15000]}"
+                    res = model.generate_content(prompt)
+                    cols = [c.strip() for c in res.text.split('|')]
+                    if len(cols) >= 6: table1_rows.append(cols)
+                except: pass
+                progress_bar.progress((i+1)/len(st.session_state.uploaded_files))
+            if table1_rows:
+                df_t1 = pd.DataFrame(table1_rows, columns=['Study', 'Design', 'Population', 'Intervention', 'Control', 'Outcomes'])
+                st.session_state.characteristics_table = df_t1
+        else: st.warning("請先上傳 PDF。")
+    
+    if st.session_state.characteristics_table is not None:
+        st.subheader("Table 1: Characteristics of Included Studies")
+        st.table(st.session_state.characteristics_table)
+
     st.markdown("---")
-    col_ex_outcome, col_ex_type = st.columns([2, 1])
-    with col_ex_outcome:
-        c1, c2 = st.columns([3, 1])
-        with c2:
-            if st.button("🔄 更新選單"): st.rerun()
-        r_p = st.session_state.get('rob_primary_input', st.session_state.rob_primary)
-        r_s = st.session_state.get('rob_secondary_input', st.session_state.rob_secondary)
+    st.subheader("各 Outcome 數據萃取")
+    
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        # Dynamic Outcome List
+        r_p = st.session_state.get('rob_primary', '')
+        r_s = st.session_state.get('rob_secondary', '')
         opts = []
         if r_p: opts.append(r_p)
         if r_s: opts.extend([s.strip() for s in r_s.split(',') if s.strip()])
-        target_outcome = st.selectbox("欲萃取的 Outcome", opts if opts else ["請先設定 Outcome"])
-    with col_ex_type:
-        data_type = st.radio("數據型態", ["二元數據 (Binary)", "連續數據 (Continuous)"])
-    if st.button("🔍 開始數據萃取") and api_key and st.session_state.uploaded_files:
+        target_outcome = st.selectbox("選擇 Outcome", opts if opts else ["請先設定 Outcome"])
+    with c2:
+        data_type = st.radio("資料型態", ["Binary", "Continuous"], key="dtype_radio")
+
+    if st.button("🔍 萃取此 Outcome 數據") and api_key and st.session_state.uploaded_files:
         progress_bar = st.progress(0); status_text = st.empty(); extract_rows = []
-        study_list_str = ", ".join([f"{s['id']}" for s in st.session_state.included_pmids])
         files = st.session_state.uploaded_files
         for i, file in enumerate(files):
             status_text.text(f"萃取中：{file.name} ...")
             try:
                 pdf_reader = PdfReader(file); text_content = "".join([p.extract_text() for p in pdf_reader.pages])
             except: continue
-            if "Binary" in data_type:
-                prompt = f"Task: Extract Binary Data (Events/Total) for '{target_outcome}'. Target Studies: {study_list_str}. Format: StudyID (Author Year) | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total. Text: {text_content[:25000]}"
+            if data_type == "Binary":
+                prompt = f"Task: Extract Binary Data (Events/Total) for '{target_outcome}'. StudyID MUST be 'Author Year' (e.g. Ayhan 2006). Format: StudyID | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total. Text: {text_content[:25000]}"
                 cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
             else:
-                prompt = f"Task: Extract Continuous Data (Mean/SD) for '{target_outcome}'. Target Studies: {study_list_str}. Format: StudyID (Author Year) | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total. Text: {text_content[:25000]}"
+                prompt = f"Task: Extract Continuous Data (Mean/SD) for '{target_outcome}'. StudyID MUST be 'Author Year'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total. Text: {text_content[:25000]}"
                 cols = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
             try:
                 response = model.generate_content(prompt)
@@ -603,27 +643,35 @@ with tab4:
             progress_bar.progress((i + 1) / len(files))
         if extract_rows:
             df_ex = pd.DataFrame(extract_rows, columns=cols)
+            # Save to dict
             st.session_state.extracted_datasets[target_outcome] = df_ex
-            st.session_state.current_data_types[target_outcome] = "Binary" if "Binary" in data_type else "Continuous"
-            status_text.text("萃取完成！")
-    
+            st.session_state.dataset_types[target_outcome] = data_type
+            status_text.text(f"Outcome '{target_outcome}' 萃取完成！")
+
+    # Display extracted tabs
     if st.session_state.extracted_datasets:
-        st.success(f"已萃取 Outcome: {list(st.session_state.extracted_datasets.keys())}")
+        tabs = st.tabs(list(st.session_state.extracted_datasets.keys()))
+        for i, (k, v) in enumerate(st.session_state.extracted_datasets.items()):
+            with tabs[i]:
+                st.write(f"**Type:** {st.session_state.dataset_types[k]}")
+                st.dataframe(v)
 
 # Tab 5: Stats
 with tab5:
     st.header("📈 統計分析")
     if st.session_state.extracted_datasets:
-        selected_outcome = st.selectbox("選擇要分析的 Outcome", list(st.session_state.extracted_datasets.keys()))
-        df_extract = st.session_state.extracted_datasets[selected_outcome]
-        dtype = st.session_state.current_data_types[selected_outcome]
+        out_list = list(st.session_state.extracted_datasets.keys())
+        sel_out = st.selectbox("選擇要分析的 Outcome", out_list)
         
-        st.markdown(f"### Analysis for Outcome: **{selected_outcome}** ({dtype})")
+        df_extract = st.session_state.extracted_datasets[sel_out]
+        dtype = st.session_state.dataset_types[sel_out]
+        
+        st.info(f"分析目標：{sel_out} ({dtype})")
         ma = MetaAnalysisEngine(df_extract, dtype)
         
         if not ma.df.empty:
             st.subheader("1. 🌲 專業森林圖")
-            st.pyplot(plot_forest_professional(ma, selected_outcome))
+            st.pyplot(plot_forest_professional(ma))
             c1, c2 = st.columns(2)
             with c1:
                 st.subheader("2. 🌪️ 漏斗圖")
