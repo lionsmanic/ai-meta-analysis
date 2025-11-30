@@ -13,14 +13,13 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (Human-in-the-loop Edition)")
-st.markdown("### 整合 PICO ➔ 智能篩選 ➔ RoB 評讀 ➔ **數據萃取(下載)** ➔ **上傳校正檔進行統計**")
+st.title("🧬 AI-Meta Analysis Pro (One-Click All Extraction)")
+st.markdown("### 整合 PICO ➔ 智能篩選 ➔ RoB 評讀 ➔ **一鍵生成所有表格** ➔ 統計圖表")
 
-# --- 輔助函式：顯示從 1 開始的表格 ---
+# --- 輔助函式 ---
 def display_df(df):
-    # 建立一個副本以避免修改原始數據
+    # 顯示表格並將索引設為從 1 開始
     df_display = df.copy()
-    # 重設索引從 1 開始
     df_display.index = np.arange(1, len(df_display) + 1)
     st.dataframe(df_display, use_container_width=True)
 
@@ -87,7 +86,6 @@ class MetaAnalysisEngine:
         df = df.dropna(subset=cols_to_numeric).reset_index(drop=True)
         
         if "Binary" in self.data_type:
-            # 容錯：檢查欄位是否存在
             req_cols = ['Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
             if not all(col in df.columns for col in req_cols): return
             df = df[(df['Tx Total'] > 0) & (df['Ctrl Total'] > 0)].reset_index(drop=True)
@@ -181,7 +179,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 (v7.3 Layout) ---
+# --- 繪圖函式 ---
 def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
@@ -228,7 +226,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals = df['TE']; lows = df['lower']; ups = df['upper']
+        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -343,6 +341,7 @@ def plot_leave_one_out_professional(ma_engine):
     return fig
 
 def transform_none(v): return v 
+
 def plot_funnel(ma_engine):
     df = ma_engine.df; res = ma_engine.results; te_pooled = res['TE_pooled']
     plt.rcParams.update({'font.size': 10, 'figure.dpi': 200})
@@ -383,10 +382,9 @@ def plot_influence_diagnostics_grid(ma_engine):
     plt.tight_layout()
     return fig
 
-# --- Helper Functions (Traffic Light & Summary) - Placeholder to save space
+# --- Helper Functions (Traffic Light & Summary) - Placeholder
 def plot_traffic_light(df, title): return plt.figure()
 def plot_summary_bar(df, title): return plt.figure()
-
 
 # --- Sidebar: 設定與 API Key ---
 with st.sidebar:
@@ -545,16 +543,21 @@ with tab3:
             status_text.text("評讀完成！")
     if 'rob_results' in st.session_state and st.session_state.rob_results is not None: st.dataframe(st.session_state.rob_results)
 
-# Tab 4: Data Extraction
+# Tab 4: Data Extraction (Batch)
 with tab4:
     st.header("📊 數據萃取 & 特徵總表")
-    
-    # 1. Table 1
-    if st.button("📄 根據上傳的 PDF 生成文獻特徵總表 (Table 1)"):
+    if st.button("🚀 全面啟動：生成特徵表 + 萃取所有 Outcome"):
         if st.session_state.uploaded_files:
-            progress_bar = st.progress(0); status_text = st.empty(); table1_rows = []
-            for i, file in enumerate(st.session_state.uploaded_files):
-                status_text.text(f"分析特徵中：{file.name} ...")
+            progress_bar = st.progress(0); status_text = st.empty()
+            outcomes_to_extract = []
+            if st.session_state.rob_primary: outcomes_to_extract.append(st.session_state.rob_primary)
+            if st.session_state.rob_secondary: outcomes_to_extract.extend([s.strip() for s in st.session_state.rob_secondary.split(',') if s.strip()])
+            
+            table1_rows = []
+            total_steps = len(st.session_state.uploaded_files) * (1 + len(outcomes_to_extract)); current_step = 0
+            
+            for file in st.session_state.uploaded_files:
+                status_text.text(f"分析特徵: {file.name}...")
                 try:
                     pdf_reader = PdfReader(file); text = "".join([p.extract_text() for p in pdf_reader.pages[:5]])
                     prompt = f"Task: Extract study characteristics. Format: StudyID (Author Year) | Design | Population (N) | Intervention | Control | Outcomes. Text: {text[:15000]}"
@@ -564,75 +567,56 @@ with tab4:
                     elif len(cols) > 6: cols = cols[:6]
                     table1_rows.append(cols)
                 except: pass
-                progress_bar.progress((i+1)/len(st.session_state.uploaded_files))
+                current_step += 1; progress_bar.progress(current_step / total_steps)
             if table1_rows:
                 df_t1 = pd.DataFrame(table1_rows, columns=['Study', 'Design', 'Population', 'Intervention', 'Control', 'Outcomes'])
-                display_df(df_t1)
-                csv = df_t1.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("📥 下載 Table 1 (CSV)", data=csv, file_name="table1.csv", mime="text/csv")
-        else: st.warning("請先上傳 PDF。")
-    
-    st.markdown("---")
-    st.subheader("批次數據萃取")
+                st.session_state.characteristics_table = df_t1
 
-    # 2. Batch Config & Extraction
-    outcomes = []
-    if st.session_state.rob_primary: outcomes.append(st.session_state.rob_primary)
-    if st.session_state.rob_secondary:
-        outcomes.extend([s.strip() for s in st.session_state.rob_secondary.split(',') if s.strip()])
-    
-    if not outcomes:
-        st.warning("請先設定 Outcome。")
-    else:
-        configs = {}
-        cols = st.columns(3)
-        for i, out in enumerate(outcomes):
-            with cols[i % 3]:
-                configs[out] = st.radio(f"{out} 數據型態", ["Binary", "Continuous"], key=f"type_{out}")
-        
-        if st.button("🚀 全面啟動：萃取所有 Outcome") and api_key and st.session_state.uploaded_files:
-            progress_bar = st.progress(0); status_text = st.empty()
-            total_steps = len(outcomes) * len(st.session_state.uploaded_files); current_step = 0
-            
-            for out in outcomes:
-                dtype = configs[out]
+            for out in outcomes_to_extract:
+                dtype = st.session_state.dataset_types.get(out, "Binary")
                 extract_rows = []
                 for file in st.session_state.uploaded_files:
-                    status_text.text(f"萃取中 ({out}): {file.name}...")
+                    status_text.text(f"萃取數據 ({out}): {file.name}...")
                     try:
                         pdf_reader = PdfReader(file); text_content = "".join([p.extract_text() for p in pdf_reader.pages])
-                    except: continue
-                    
-                    if dtype == "Binary":
-                        prompt = f"Task: Extract Binary Data (Events/Total) for '{out}'. StudyID MUST BE 'FirstAuthor Year' ONLY (e.g. Smith 2020). Format: StudyID | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total. Text: {text_content[:25000]}"
-                        col_names = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
-                    else:
-                        prompt = f"Task: Extract Continuous Data (Mean/SD) for '{out}'. StudyID MUST BE 'FirstAuthor Year' ONLY (e.g. Smith 2020). Format: StudyID | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total. Text: {text_content[:25000]}"
-                        col_names = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
-                    
-                    try:
+                        if dtype == "Binary":
+                            prompt = f"Task: Extract Binary Data (Events/Total) for '{out}'. StudyID MUST be 'Author Year'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total. Text: {text_content[:25000]}"
+                            cols_schema = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Events', 'Tx Total', 'Ctrl Events', 'Ctrl Total']
+                        else:
+                            prompt = f"Task: Extract Continuous Data (Mean/SD) for '{out}'. StudyID MUST be 'Author Year'. Format: StudyID | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total. Text: {text_content[:25000]}"
+                            cols_schema = ['Study ID', 'Population', 'Tx Details', 'Ctrl Details', 'Tx Mean', 'Tx SD', 'Tx Total', 'Ctrl Mean', 'Ctrl SD', 'Ctrl Total']
                         res = model.generate_content(prompt)
                         for line in res.text.strip().split('\n'):
                             if '|' in line and 'StudyID' not in line:
                                 c = [x.strip() for x in line.split('|')]
-                                if len(c) == len(col_names): extract_rows.append(c)
+                                if len(c) == len(cols_schema): extract_rows.append(c)
                     except: pass
-                    current_step += 1
-                    progress_bar.progress(current_step / total_steps)
-                
+                    current_step += 1; progress_bar.progress(current_step / total_steps)
                 if extract_rows:
-                    df_ex = pd.DataFrame(extract_rows, columns=col_names)
+                    df_ex = pd.DataFrame(extract_rows, columns=cols_schema)
                     st.session_state.extracted_datasets[out] = df_ex
-                    st.session_state.dataset_types[out] = dtype
-            st.success("所有萃取完成！")
+            status_text.text("所有任務完成！"); st.success("已完成特徵表與所有 Outcome 數據萃取！")
+        else: st.warning("請先上傳 PDF。")
 
-    # 3. Display Tabs
+    st.markdown("#### Outcome 資料型態設定")
+    outcomes = []
+    if st.session_state.rob_primary: outcomes.append(st.session_state.rob_primary)
+    if st.session_state.rob_secondary: outcomes.extend([s.strip() for s in st.session_state.rob_secondary.split(',') if s.strip()])
+    if outcomes:
+        cols = st.columns(3)
+        for i, out in enumerate(outcomes):
+            with cols[i % 3]:
+                st.session_state.dataset_types[out] = st.radio(f"{out}", ["Binary", "Continuous"], key=f"type_{out}")
+    else: st.info("請先在 RoB 分頁設定 Outcome。")
+    st.markdown("---")
+    if st.session_state.characteristics_table is not None:
+        st.subheader("Table 1: Characteristics of Included Studies"); display_df(st.session_state.characteristics_table)
     if st.session_state.extracted_datasets:
+        st.subheader("Extracted Data by Outcome")
         tabs = st.tabs(list(st.session_state.extracted_datasets.keys()))
         for i, (k, v) in enumerate(st.session_state.extracted_datasets.items()):
             with tabs[i]:
-                st.info(f"Data Type: {st.session_state.dataset_types[k]}")
-                display_df(v)
+                st.info(f"Type: {st.session_state.dataset_types.get(k, 'Binary')}"); display_df(v)
                 csv = v.to_csv(index=False).encode('utf-8-sig')
                 st.download_button(f"📥 下載 {k} (CSV)", data=csv, file_name=f"{k}.csv", mime="text/csv")
 
@@ -640,11 +624,8 @@ with tab4:
 with tab5:
     st.header("📈 統計分析 (Human-in-the-loop)")
     st.markdown("請先在 Tab 4 下載 CSV，手動校正數據後，再次上傳進行分析。")
-    
     uploaded_data_files = st.file_uploader("上傳校正後的 CSV/Excel 檔 (檔名即為 Outcome 名稱)", type=["csv", "xlsx"], accept_multiple_files=True)
-    
     if uploaded_data_files:
-        # 1. Parse Files
         data_map = {}
         for f in uploaded_data_files:
             fname = f.name.rsplit('.', 1)[0]
@@ -653,18 +634,12 @@ with tab5:
                 else: df = pd.read_excel(f)
                 data_map[fname] = df
             except: st.error(f"無法讀取 {f.name}")
-        
-        # 2. Select Outcome
         if data_map:
             sel_out = st.selectbox("選擇要分析的 Outcome", list(data_map.keys()))
             df_analysis = data_map[sel_out]
-            
-            # 3. Select Data Type (Required because we lost state from file upload)
             dtype = st.radio("確認資料型態", ["Binary", "Continuous"], key="stats_dtype")
-            
             st.markdown("---")
             ma = MetaAnalysisEngine(df_analysis, dtype)
-            
             if not ma.df.empty:
                 st.subheader("1. 🌲 專業森林圖")
                 st.pyplot(plot_forest_professional(ma))
