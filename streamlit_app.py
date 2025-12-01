@@ -13,12 +13,14 @@ import io
 # --- 頁面設定 ---
 st.set_page_config(page_title="AI-Meta Analysis Pro", layout="wide", page_icon="🧬")
 
-st.title("🧬 AI-Meta Analysis Pro (One-Click All Extraction)")
-st.markdown("### 整合 PICO ➔ 智能篩選 ➔ RoB 評讀 ➔ **一鍵生成所有表格** ➔ 統計圖表")
+st.title("🧬 AI-Meta Analysis Pro (Index Fixed)")
+st.markdown("### 整合 PICO ➔ 智能篩選 ➔ RoB 評讀 ➔ **一鍵全能萃取** ➔ 統計圖表")
 
-# --- 輔助函式 ---
+# --- 輔助函式：統一表格顯示 (從 1 開始) ---
 def display_df(df):
-    # 顯示表格並將索引設為從 1 開始
+    if df is None or df.empty:
+        st.warning("無資料可顯示")
+        return
     df_display = df.copy()
     df_display.index = np.arange(1, len(df_display) + 1)
     st.dataframe(df_display, use_container_width=True)
@@ -179,7 +181,7 @@ class MetaAnalysisEngine:
     def get_influence_diagnostics(self):
         return self.influence_df
 
-# --- 繪圖函式 ---
+# --- 繪圖函式 (Compact Layout) ---
 def plot_forest_professional(ma_engine):
     df = ma_engine.df; res = ma_engine.results; measure = ma_engine.measure
     is_binary = "Binary" in ma_engine.data_type
@@ -191,7 +193,9 @@ def plot_forest_professional(ma_engine):
     n_rows = n_studies + 4
     ax.set_ylim(0, n_rows); ax.set_xlim(0, 100); ax.axis('off')
     
-    x_study = 0; x_tx_ev = 31; x_tx_tot = 37; x_ctrl_ev = 45; x_ctrl_tot = 51
+    # Compact Coordinates (v7.3 Perfect Spacing)
+    x_study = 0
+    x_tx_ev = 31; x_tx_tot = 37; x_ctrl_ev = 45; x_ctrl_tot = 51
     x_plot_start = 55; x_plot_end = 73 
     x_rr = 79; x_ci = 89; x_wt = 100
     
@@ -216,7 +220,8 @@ def plot_forest_professional(ma_engine):
     if measure == "RR":
         vals = np.exp(df['TE']); lows = np.exp(df['lower']); ups = np.exp(df['upper'])
         pool_val = np.exp(res['TE_pooled']); pool_low = np.exp(res['lower_pooled']); pool_up = np.exp(res['upper_pooled'])
-        center = 1.0; all_v = list(vals)+list(lows)+list(ups)
+        center = 1.0
+        all_v = list(vals)+list(lows)+list(ups)
         min_v = min(min(all_v), pool_low); max_v = max(max(all_v), pool_up)
         d_min = abs(np.log(min_v)-np.log(1)) if min_v>0 else 5; d_max = abs(np.log(max_v)-np.log(1))
         md = max(d_min, d_max)*1.1; v_min = np.exp(-md); v_max = np.exp(md)
@@ -226,7 +231,7 @@ def plot_forest_professional(ma_engine):
             if v<=0: v=0.001
             return x_plot_start + (np.log(v)-np.log(v_min))/(np.log(v_max)-np.log(v_min))*(x_plot_end-x_plot_start)
     else:
-        vals, lows, ups = df['TE']; lows = df['lower']; ups = df['upper']
+        vals = df['TE']; lows = df['lower']; ups = df['upper']
         pool_val = res['TE_pooled']; pool_low = res['lower_pooled']; pool_up = res['upper_pooled']
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
@@ -319,7 +324,6 @@ def plot_leave_one_out_professional(ma_engine):
         center = 0.0; all_v = list(vals)+list(lows)+list(ups)
         md = max(abs(min(all_v)), abs(max(all_v)))*1.1; v_min = -md; v_max = md
         def transform(v): return x_plot_start + (v-v_min)/(v_max-v_min)*(x_plot_end-x_plot_start)
-
     for i, row in inf_df.iterrows():
         y = n_rows - 1.5 - i
         ax.text(x_study, y, f"Omitting {row['Study ID']}", ha='left', va='center')
@@ -328,7 +332,6 @@ def plot_leave_one_out_professional(ma_engine):
         ax.plot(x, y, 's', color='gray', markersize=6)
         txt = f"{vals[i]:.2f} [{lows[i]:.2f}; {ups[i]:.2f}]"
         ax.text(x_stat, y, txt, ha='center', va='center')
-        
     y_pool = 0.5
     px, pl, pr = transform_none(orig_val), transform_none(orig_low), transform_none(orig_up)
     ax.fill([pl, px, pr, px], [y_pool, y_pool+0.25, y_pool, y_pool-0.25], color='red', alpha=0.6)
@@ -382,9 +385,51 @@ def plot_influence_diagnostics_grid(ma_engine):
     plt.tight_layout()
     return fig
 
-# --- Helper Functions (Traffic Light & Summary) - Placeholder
-def plot_traffic_light(df, title): return plt.figure()
-def plot_summary_bar(df, title): return plt.figure()
+# --- Helper Functions (Traffic Light & Summary) ---
+def plot_traffic_light(df, title):
+    color_map = {'Low': '#2E7D32', 'Some concerns': '#F9A825', 'High': '#C62828'}
+    studies = df['Study ID'].tolist()
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
+    fig, ax = plt.subplots(figsize=(10, len(studies) * 0.8 + 2))
+    for y, study in enumerate(studies):
+        for x, domain in enumerate(domains):
+            risk_val = df[df['Study ID'] == study][DOMAIN_MAPPING[domain]].values[0]
+            risk = str(risk_val).strip()
+            color = '#808080'; symbol = '?'
+            if 'Low' in risk: color = color_map['Low']; symbol = '+'
+            elif 'High' in risk: color = color_map['High']; symbol = '-'
+            elif 'Some' in risk: color = color_map['Some concerns']; symbol = '!'
+            circle = mpatches.Circle((x, len(studies) - 1 - y), 0.4, color=color)
+            ax.add_patch(circle)
+            ax.text(x, len(studies) - 1 - y, symbol, ha='center', va='center', color='white', fontweight='bold', fontsize=12)
+    ax.set_xlim(-0.5, len(domains) - 0.5); ax.set_ylim(-0.5, len(studies) - 0.5)
+    ax.set_xticks(range(len(plot_labels))); ax.set_xticklabels(plot_labels, fontsize=10, fontweight='bold')
+    ax.set_yticks(range(len(studies))); ax.set_yticklabels(studies[::-1], fontsize=10)
+    for spine in ax.spines.values(): spine.set_visible(False)
+    ax.set_title(f"RoB 2.0 Traffic Light Plot: {title}", pad=20, fontsize=14, fontweight='bold')
+    patches = [mpatches.Patch(color=v, label=k) for k, v in color_map.items()]
+    ax.legend(handles=patches, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3, frameon=False)
+    return fig
+
+def plot_summary_bar(df, title):
+    domains = ['D1', 'D2', 'D3', 'D4', 'D5', 'Overall']
+    plot_labels = ['D1 Randomization', 'D2 Deviations', 'D3 Missing Data', 'D4 Measurement', 'D5 Reporting', 'Overall Bias']
+    data = []
+    for domain in domains:
+        col_name = DOMAIN_MAPPING[domain]
+        counts = df[col_name].apply(lambda x: 'Low' if 'Low' in str(x) else ('High' if 'High' in str(x) else 'Some concerns')).value_counts()
+        total = len(df)
+        if total == 0: total = 1
+        data.append([(counts.get('Low', 0)/total)*100, (counts.get('Some concerns', 0)/total)*100, (counts.get('High', 0)/total)*100])
+    df_plot = pd.DataFrame(data, columns=['Low', 'Some concerns', 'High'], index=plot_labels)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    colors = ['#2E7D32', '#F9A825', '#C62828']
+    df_plot.plot(kind='barh', stacked=True, color=colors, ax=ax, width=0.7)
+    ax.set_xlim(0, 100); ax.set_xlabel("Percentage of Studies (%)"); ax.set_title(f"Risk of Bias Summary: {title}", fontsize=14, fontweight='bold')
+    ax.invert_yaxis(); ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), frameon=False)
+    ax.spines['top'].set_visible(False); ax.spines['right'].set_visible(False)
+    return fig
 
 # --- Sidebar: 設定與 API Key ---
 with st.sidebar:
@@ -468,40 +513,42 @@ with tab2:
     if 'included_pmids' not in st.session_state: st.session_state.included_pmids = []
     if st.button("🚀 開始智能篩選") and api_key and pmid_input:
         pmid_list = [p.strip() for p in pmid_input.replace('\n', ',').split(',') if p.strip()]
-        progress_bar = st.progress(0); status_text = st.empty(); results = []
-        try:
-            status_text.text("正在從 PubMed 抓取摘要...")
-            handle = Entrez.efetch(db="pubmed", id=pmid_list, rettype="medline", retmode="text")
-            records = handle.read().split('\n\n')
-            ctx_p = st.session_state.p_val; ctx_i = st.session_state.i_val; ctx_c = st.session_state.c_val; ctx_o1 = st.session_state.o1_val; ctx_o2 = st.session_state.o2_val
-            for i, record in enumerate(records):
-                if not record.strip(): continue
-                pmid_val = "N/A"; title = "N/A"; abstract = ""; authors = []; year = "N/A"; journal = "N/A"
-                for line in record.split('\n'):
-                    if line.startswith("PMID- "): pmid_val = line.split('- ')[1].strip()
-                    if line.startswith("TI  - "): title = line.split('- ')[1].strip()
-                    if line.startswith("AB  - "): abstract = line.split('- ')[1].strip()
-                    if line.startswith("DP  - "): year = line.split('- ')[1].strip()[:4]
-                    if line.startswith("TA  - "): journal = line.split('- ')[1].strip()
-                    if line.startswith("FAU - "): authors.append(line.split('- ')[1].strip())
-                first_author = authors[0] if authors else "Unknown"
-                status_text.text(f"正在篩選: {pmid_val}...")
-                prompt = f"Role: Systematic Reviewer. Context: P:{ctx_p}, I:{ctx_i}, C:{ctx_c}, O1:{ctx_o1}, O2:{ctx_o2}. Task: Screen study. Requirements: 1.Status (INCLUDED/EXCLUDED) 2.Reason (Trad-Chinese) 3.Extract (Design, Population, Intervention, Control, Outcomes). Format: STATUS | Reason | Design | Population | Intervention | Control | Outcomes. Text: {title}\n{abstract}"
-                try:
-                    response = model.generate_content(prompt)
-                    cols = [c.strip() for c in response.text.split('|')]
-                    if len(cols) >= 7:
-                        res = {'Study': f"{first_author} {year}", 'PMID': pmid_val, 'Status': cols[0], 'Reason': cols[1], 'Design': cols[2], 'Population': cols[3], 'Intervention': cols[4], 'Control': cols[5], 'Outcomes': cols[6]}
-                        results.append(res)
-                        if cols[0] == "INCLUDED" and pmid_val not in st.session_state.included_pmids:
-                            st.session_state.included_pmids.append({'id': f"{first_author} {year}", 'pmid': pmid_val})
-                except: pass
-                progress_bar.progress((i+1)/len(records))
-            if results:
-                df_res = pd.DataFrame(results)
-                st.session_state.characteristics_table = df_res[df_res['Status']=="INCLUDED"]
-                st.dataframe(df_res)
-        except Exception as e: st.error(f"Error: {e}")
+        if not pmid_list: st.error("請輸入有效的 PMID。")
+        else:
+            progress_bar = st.progress(0); status_text = st.empty(); results = []
+            try:
+                status_text.text("正在從 PubMed 抓取摘要...")
+                handle = Entrez.efetch(db="pubmed", id=pmid_list, rettype="medline", retmode="text")
+                records = handle.read().split('\n\n')
+                ctx_p = st.session_state.p_val; ctx_i = st.session_state.i_val; ctx_c = st.session_state.c_val; ctx_o1 = st.session_state.o1_val; ctx_o2 = st.session_state.o2_val
+                for i, record in enumerate(records):
+                    if not record.strip(): continue
+                    pmid_val = "N/A"; title = "N/A"; abstract = ""; authors = []; year = "N/A"; journal = "N/A"
+                    for line in record.split('\n'):
+                        if line.startswith("PMID- "): pmid_val = line.split('- ')[1].strip()
+                        if line.startswith("TI  - "): title = line.split('- ')[1].strip()
+                        if line.startswith("AB  - "): abstract = line.split('- ')[1].strip()
+                        if line.startswith("DP  - "): year = line.split('- ')[1].strip()[:4]
+                        if line.startswith("TA  - "): journal = line.split('- ')[1].strip()
+                        if line.startswith("FAU - "): authors.append(line.split('- ')[1].strip())
+                    first_author = authors[0] if authors else "Unknown"
+                    status_text.text(f"正在篩選: {pmid_val}...")
+                    prompt = f"Role: Systematic Reviewer. Context: P:{ctx_p}, I:{ctx_i}, C:{ctx_c}, O1:{ctx_o1}, O2:{ctx_o2}. Task: Screen study. Requirements: 1.Status (INCLUDED/EXCLUDED) 2.Reason (Trad-Chinese) 3.Extract (Design, Population, Intervention, Control, Outcomes). Format: STATUS | Reason | Design | Population | Intervention | Control | Outcomes. Text: {title}\n{abstract}"
+                    try:
+                        response = model.generate_content(prompt)
+                        cols = [c.strip() for c in response.text.split('|')]
+                        if len(cols) >= 7:
+                            res = {'Study': f"{first_author} {year}", 'PMID': pmid_val, 'Status': cols[0], 'Reason': cols[1], 'Design': cols[2], 'Population': cols[3], 'Intervention': cols[4], 'Control': cols[5], 'Outcomes': cols[6]}
+                            results.append(res)
+                            if cols[0] == "INCLUDED" and pmid_val not in st.session_state.included_pmids:
+                                st.session_state.included_pmids.append({'id': f"{first_author} {year}", 'pmid': pmid_val})
+                    except: pass
+                    progress_bar.progress((i+1)/len(records))
+                if results:
+                    df_res = pd.DataFrame(results)
+                    st.session_state.characteristics_table = df_res[df_res['Status']=="INCLUDED"]
+                    display_df(df_res)
+            except Exception as e: st.error(f"Error: {e}")
 
 # Tab 3: RoB
 with tab3:
@@ -541,11 +588,12 @@ with tab3:
             df = pd.DataFrame(table_rows, columns=['Study ID', 'Outcome', 'D1', 'D2', 'D3', 'D4', 'D5', 'Overall', 'Reasoning'])
             st.session_state.rob_results = df.rename(columns=DOMAIN_MAPPING)
             status_text.text("評讀完成！")
-    if 'rob_results' in st.session_state and st.session_state.rob_results is not None: st.dataframe(st.session_state.rob_results)
+    if 'rob_results' in st.session_state and st.session_state.rob_results is not None: display_df(st.session_state.rob_results)
 
 # Tab 4: Data Extraction (Batch)
 with tab4:
     st.header("📊 數據萃取 & 特徵總表")
+    
     if st.button("🚀 全面啟動：生成特徵表 + 萃取所有 Outcome"):
         if st.session_state.uploaded_files:
             progress_bar = st.progress(0); status_text = st.empty()
