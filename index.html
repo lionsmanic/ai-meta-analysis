@@ -1064,7 +1064,7 @@ function renderScreenResults(results,filter){
     const inc=r.status==='INCLUDED';
     const det=inc?`<div class="sc-det">🔬 ${r.design||'-'} · 👥 ${r.population||'-'} · 💉 ${r.intervention||'-'}</div>`:'';
     return `<div class="sc-card ${inc?'included':'excluded'}">
-      <div><div class="sc-pmid">PMID ${r.pmid}</div>
+      <div><div class="sc-pmid"><a href="https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/" target="_blank" rel="noopener" title="在 PubMed 開啟" style="color:var(--teal);text-decoration:none">PMID ${r.pmid} ↗</a></div>
         <span class="badge ${inc?'b-green':'b-gray'}" style="margin-top:5px">${inc?'✓ 納入':'✗ 排除'}</span>
         <div style="font-size:11px;color:var(--text4);margin-top:3px">${r.studyId}</div></div>
       <div><div class="sc-title">${r.title||'(no title)'}</div>
