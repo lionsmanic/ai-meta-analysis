@@ -6,590 +6,236 @@
 <title>AI·Meta Analysis Pro — Systematic Review Workbench</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
-/* ═══════════════════════════════════════════════
-   DESIGN SYSTEM — Warm Academic Research Platform
-   Inspired by Covidence · UpToDate · NEJM editorial
-   ═══════════════════════════════════════════════ */
 :root {
-  /* Backgrounds */
-  --bg:        #f5f1eb;
-  --bg2:       #ede8e0;
-  --surface:   #ffffff;
-  --surface2:  #faf8f4;
-
-  /* Sidebar */
-  --side:      #1c2b45;
-  --side2:     #243757;
-  --side-act:  #0e9bba;
-  --side-text: #94aec8;
-  --side-head: #5b7899;
-
-  /* Brand */
-  --teal:      #0891b2;
-  --teal-lt:   #e0f5f9;
-  --teal-dk:   #0369a1;
-  --amber:     #c2710a;
-  --amber-lt:  #fef3c7;
-  --amber-mid: #f59e0b;
-
-  /* Semantic */
-  --green:     #047857;
-  --green-lt:  #d1fae5;
-  --yellow:    #92400e;
-  --yellow-lt: #fef9c3;
-  --orange:    #c2410c;
-  --orange-lt: #ffedd5;
-  --red:       #be123c;
-  --red-lt:    #ffe4e6;
-  --gray:      #374151;
-  --gray-lt:   #f3f4f6;
-
-  /* Text */
-  --text:      #1c1917;
-  --text-2:    #44403c;
-  --text-3:    #78716c;
-  --text-4:    #a8a29e;
-
-  /* Borders */
-  --border:    #e2dcd4;
-  --border2:   #d4cec6;
-
-  /* Radii / Shadow */
-  --r:         10px;
-  --r-sm:      6px;
-  --r-lg:      16px;
-  --shadow:    0 1px 4px rgba(28,25,23,0.08), 0 4px 16px rgba(28,25,23,0.06);
-  --shadow-lg: 0 4px 24px rgba(28,25,23,0.12), 0 12px 40px rgba(28,25,23,0.08);
-  --shadow-card: 0 1px 3px rgba(28,25,23,0.07), 0 2px 8px rgba(28,25,23,0.05);
+  --bg:#f5f1eb; --bg2:#ede8e0; --surface:#ffffff; --surface2:#faf8f4;
+  --side:#1c2b45; --side2:#243757; --side-act:#0e9bba; --side-text:#94aec8; --side-head:#5b7899;
+  --teal:#0891b2; --teal-lt:#e0f5f9; --teal-dk:#0369a1;
+  --amber:#c2710a; --amber-lt:#fef3c7; --amber-mid:#f59e0b;
+  --green:#047857; --green-lt:#d1fae5;
+  --red:#be123c; --red-lt:#ffe4e6;
+  --orange:#c2410c; --orange-lt:#ffedd5;
+  --gray:#374151; --gray-lt:#f3f4f6;
+  --text:#1c1917; --text2:#44403c; --text3:#78716c; --text4:#a8a29e;
+  --border:#e2dcd4; --border2:#d4cec6;
+  --r:10px; --r-sm:6px;
+  --sh:0 1px 3px rgba(28,25,23,.07),0 2px 8px rgba(28,25,23,.05);
+  --sh-lg:0 4px 24px rgba(28,25,23,.12);
 }
-
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
-body{
-  font-family:'DM Sans',sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  font-size:16px;
-  line-height:1.65;
-  display:flex;
-  min-height:100vh;
-  overflow-x:hidden;
-}
-
-/* ── SCROLLBAR ── */
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:16px;line-height:1.65;display:flex;min-height:100vh;overflow-x:hidden}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
-::-webkit-scrollbar-thumb:hover{background:var(--text-4)}
 
-/* ══════════════════════════════
-   SIDEBAR
-══════════════════════════════ */
-#sidebar {
-  width: 260px;
-  min-height: 100vh;
-  background: var(--side);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  position: fixed;
-  left: 0; top: 0; bottom: 0;
-  z-index: 200;
-  transition: transform 0.3s ease;
-  overflow-y: auto;
-}
-#sidebar::-webkit-scrollbar{width:3px}
-#sidebar::-webkit-scrollbar-thumb{background:var(--side2)}
+/* ── SIDEBAR ── */
+#sidebar{width:260px;min-height:100vh;background:var(--side);display:flex;flex-direction:column;flex-shrink:0;position:fixed;left:0;top:0;bottom:0;z-index:200;transition:transform .3s;overflow-y:auto}
+.sb-logo{padding:20px 18px 16px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:12px}
+.sb-logo-icon{width:38px;height:38px;background:linear-gradient(135deg,#0891b2,#0e9bba);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;box-shadow:0 2px 10px rgba(8,145,178,.35)}
+.sb-logo h1{font-family:'Lora',serif;font-size:13.5px;font-weight:600;color:#fff;line-height:1.2}
+.sb-logo p{font-size:11px;color:var(--side-text);margin-top:1px}
+.sb-api{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.07)}
+.sb-api-lbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--side-head);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.sb-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.15);transition:background .3s}
+.sb-dot.ok{background:#34d399;box-shadow:0 0 5px rgba(52,211,153,.5)}
+.sb-api-row{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:var(--r-sm);padding:7px 10px}
+.sb-api-row input{flex:1;background:transparent;border:none;outline:none;color:#e2e8f0;font-family:'DM Mono',monospace;font-size:12px;min-width:0}
+.sb-api-row input::placeholder{color:rgba(255,255,255,.2)}
+.sb-btns{display:flex;gap:4px;margin-top:7px}
+.sb-btn{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:var(--r-sm);color:var(--side-text);font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;padding:5px 8px;cursor:pointer;transition:all .15s;text-align:center}
+.sb-btn:hover{background:rgba(255,255,255,.14);color:#fff}
+.sb-sec{padding:12px 10px 4px}
+.sb-sec-lbl{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--side-head);padding:0 8px;margin-bottom:4px}
+.sb-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-sm);cursor:pointer;transition:all .15s;color:var(--side-text);font-size:14px;font-weight:500;border:1px solid transparent}
+.sb-item:hover{background:rgba(255,255,255,.07);color:#e2e8f0}
+.sb-item.active{background:rgba(8,145,178,.18);border-color:rgba(8,145,178,.3);color:#7dd3fc}
+.sb-item .ni{font-size:16px;flex-shrink:0;width:20px;text-align:center}
+.sb-item .ns{width:19px;height:19px;border-radius:50%;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-left:auto;color:var(--side-text)}
+.sb-item.active .ns{background:var(--side-act);border-color:var(--side-act);color:#fff}
+.sb-pico{margin:0 10px 8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:var(--r-sm);padding:9px 11px}
+.sb-pico-row{font-size:11px;color:var(--side-text);line-height:1.5}
+.sb-pico-row b{color:#94c5dd}
 
-.sb-logo {
-  padding: 22px 20px 18px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
-  display: flex; align-items: center; gap: 12px;
-}
-.sb-logo-icon {
-  width: 40px; height: 40px;
-  background: linear-gradient(135deg, #0891b2, #0e9bba);
-  border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 20px; flex-shrink: 0;
-  box-shadow: 0 2px 12px rgba(8,145,178,0.35);
-}
-.sb-logo-text { flex: 1; min-width: 0; }
-.sb-logo-text h1 {
-  font-family: 'Lora', serif;
-  font-size: 14px; font-weight: 600;
-  color: #fff; letter-spacing: 0.01em;
-  line-height: 1.2;
-}
-.sb-logo-text p { font-size: 11px; color: var(--side-text); margin-top: 2px; }
+/* ── MAIN ── */
+#main{flex:1;margin-left:260px;min-height:100vh;display:flex;flex-direction:column}
+#topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 26px;height:50px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+#hamburger{display:none;background:none;border:none;cursor:pointer;font-size:20px;color:var(--text3);padding:4px}
+#page-title{font-family:'Lora',serif;font-size:.95rem;font-weight:600;color:var(--text2)}
+.step-pill{background:var(--teal-lt);color:var(--teal-dk);font-size:11px;font-weight:700;letter-spacing:.06em;padding:3px 10px;border-radius:20px;text-transform:uppercase}
+#content{flex:1;padding:24px;max-width:1100px;width:100%}
+.tab-pane{display:none;animation:fadeUp .22s ease}
+.tab-pane.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 
-.sb-api {
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
-}
-.sb-api-label {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--side-head); margin-bottom: 8px;
-  display: flex; align-items: center; gap: 6px;
-}
-.sb-api-row {
-  display: flex; align-items: center; gap: 6px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: var(--r-sm); padding: 7px 10px;
-}
-.sb-api-row input {
-  flex: 1; background: transparent; border: none; outline: none;
-  color: #e2e8f0; font-family: 'DM Mono', monospace; font-size: 12px;
-  min-width: 0;
-}
-.sb-api-row input::placeholder { color: rgba(255,255,255,0.2); }
-.sb-api-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: rgba(255,255,255,0.15); flex-shrink: 0; transition: background 0.3s;
-}
-.sb-api-dot.ok { background: #34d399; box-shadow: 0 0 5px rgba(52,211,153,0.5); }
-.sb-api-btns { display: flex; gap: 4px; margin-top: 8px; }
-.sb-btn-sm {
-  flex: 1; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
-  border-radius: var(--r-sm); color: var(--side-text); font-family: 'DM Sans', sans-serif;
-  font-size: 11px; font-weight: 500; padding: 5px 8px; cursor: pointer;
-  transition: all 0.15s; text-align: center;
-}
-.sb-btn-sm:hover { background: rgba(255,255,255,0.14); color: #fff; }
+/* ── CARDS ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;margin-bottom:16px;box-shadow:var(--sh)}
+.card-head{display:flex;align-items:center;gap:11px;margin-bottom:16px;padding-bottom:13px;border-bottom:1px solid var(--border)}
+.ci{width:34px;height:34px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.ci-teal{background:var(--teal-lt);color:var(--teal)}
+.ci-amber{background:var(--amber-lt);color:var(--amber)}
+.ci-green{background:var(--green-lt);color:var(--green)}
+.ci-red{background:var(--red-lt);color:var(--red)}
+.ci-gray{background:var(--gray-lt);color:var(--gray)}
+.cht h2{font-family:'Lora',serif;font-size:1rem;font-weight:600;color:var(--text)}
+.cht p{font-size:12.5px;color:var(--text3);margin-top:2px}
+.sec-lbl{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:9px;margin-top:18px}
+.sec-lbl:first-child{margin-top:0}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}
+.flex-row{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-start}
+.flex-row>*{flex:1;min-width:160px}
+hr.div{border:none;border-top:1px solid var(--border);margin:16px 0}
 
-.sb-section { padding: 14px 12px 6px; }
-.sb-section-label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
-  text-transform: uppercase; color: var(--side-head);
-  padding: 0 8px; margin-bottom: 4px;
-}
-.sb-nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 10px; border-radius: var(--r-sm);
-  cursor: pointer; transition: all 0.15s;
-  color: var(--side-text); font-size: 14px; font-weight: 500;
-  border: 1px solid transparent;
-}
-.sb-nav-item:hover { background: rgba(255,255,255,0.07); color: #e2e8f0; }
-.sb-nav-item.active {
-  background: rgba(8,145,178,0.18);
-  border-color: rgba(8,145,178,0.3);
-  color: #7dd3fc;
-}
-.sb-nav-item .nav-icon { font-size: 16px; flex-shrink: 0; width: 20px; text-align: center; }
-.sb-nav-item .nav-step {
-  width: 19px; height: 19px; border-radius: 50%;
-  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; flex-shrink: 0; margin-left: auto;
-  color: var(--side-text);
-}
-.sb-nav-item.active .nav-step {
-  background: var(--side-act); border-color: var(--side-act); color: #fff;
-}
+/* ── FORMS ── */
+.form-group{margin-bottom:13px}
+.form-label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:5px}
+input[type=text],input[type=email],textarea,select{width:100%;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;padding:9px 12px;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus,select:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(8,145,178,.1);background:#fff}
+input::placeholder,textarea::placeholder{color:var(--text4)}
+textarea{resize:vertical;min-height:78px;line-height:1.6}
+select{-webkit-appearance:none;cursor:pointer}
+.cb-lbl{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;color:var(--text2);font-weight:500}
+.cb-lbl input[type=checkbox]{width:16px;height:16px;accent-color:var(--teal);cursor:pointer}
 
-.sb-pico-summary {
-  margin: 0 12px 8px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--r-sm); padding: 10px 12px;
-}
-.sb-pico-row { font-size: 11px; color: var(--side-text); line-height: 1.5; }
-.sb-pico-row b { color: #94c5dd; }
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:7px;border:none;border-radius:var(--r-sm);font-family:'DM Sans',sans-serif;font-weight:600;font-size:14px;cursor:pointer;transition:all .15s;padding:10px 20px;white-space:nowrap;text-decoration:none}
+.btn:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
+.btn-primary{background:var(--teal);color:#fff}
+.btn-primary:hover{background:var(--teal-dk);box-shadow:0 2px 10px rgba(8,145,178,.25)}
+.btn-amber{background:var(--amber-mid);color:#fff}
+.btn-amber:hover{background:#d97706;box-shadow:0 2px 10px rgba(245,158,11,.25)}
+.btn-outline{background:transparent;color:var(--teal);border:1.5px solid var(--teal)}
+.btn-outline:hover{background:var(--teal-lt)}
+.btn-ghost{background:transparent;color:var(--text3);border:1.5px solid var(--border)}
+.btn-ghost:hover{background:var(--bg2);color:var(--text)}
+.btn-sm{padding:6px 13px;font-size:13px}
+.btn-danger{background:#fee2e2;color:var(--red);border:1px solid #fca5a5}
+.btn-danger:hover{background:#fecaca}
 
-/* ══════════════════════════════
-   MAIN CONTENT
-══════════════════════════════ */
-#main-wrap {
-  flex: 1;
-  margin-left: 260px;
-  min-height: 100vh;
-  display: flex; flex-direction: column;
-}
+/* ── FILE DROP ── */
+.file-drop{border:2px dashed var(--border2);border-radius:var(--r);padding:22px;text-align:center;cursor:pointer;transition:all .2s;position:relative;background:var(--surface2)}
+.file-drop:hover,.file-drop.dv{border-color:var(--teal);background:var(--teal-lt)}
+.file-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.file-drop .di{font-size:28px;margin-bottom:7px;display:block}
+.file-drop p{font-size:13.5px;color:var(--text3)}
+.file-drop strong{color:var(--teal)}
+.file-list{margin-top:9px;display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
+.file-chip{display:flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:3px 10px;font-size:12px;color:var(--text2);max-width:200px;overflow:hidden}
+.file-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-chip .rm{background:none;border:none;cursor:pointer;color:var(--text4);font-size:13px;padding:0;flex-shrink:0}
+.file-chip .rm:hover{color:var(--red)}
 
-#topbar {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  padding: 0 28px;
-  height: 52px;
-  display: flex; align-items: center; justify-content: space-between;
-  position: sticky; top: 0; z-index: 100;
-  box-shadow: 0 1px 0 var(--border);
-}
-.topbar-left { display: flex; align-items: center; gap: 10px; }
-#hamburger {
-  display: none; background: none; border: none; cursor: pointer;
-  font-size: 20px; color: var(--text-3); padding: 4px;
-}
-#page-title {
-  font-family: 'Lora', serif; font-size: 1rem; font-weight: 600;
-  color: var(--text-2);
-}
-.topbar-right { display: flex; align-items: center; gap: 8px; }
-.step-pill {
-  background: var(--teal-lt); color: var(--teal-dk);
-  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
-  padding: 3px 10px; border-radius: 20px; text-transform: uppercase;
-}
+/* ── PROGRESS ── */
+.prog-wrap{background:var(--bg2);border-radius:20px;overflow:hidden;height:5px;margin:9px 0}
+.prog-bar{height:100%;border-radius:20px;background:linear-gradient(90deg,var(--teal),var(--amber-mid));transition:width .3s}
+.prog-lbl{font-size:12.5px;color:var(--text3)}
 
-#content { flex: 1; padding: 28px; max-width: 1100px; width: 100%; }
-.tab-pane { display: none; animation: fadeUp 0.25s ease; }
-.tab-pane.active { display: block; }
-@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+/* ── TABLES ── */
+.tbl-wrap{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{background:var(--surface2);color:var(--text3);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:1}
+td{padding:9px 12px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg)}
+td input{background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-size:13px;width:100%;outline:none;padding:1px 3px;font-family:'DM Sans',sans-serif}
+td input:focus{border-bottom-color:var(--teal)}
 
-/* ══════════════════════════════
-   CARDS & LAYOUT
-══════════════════════════════ */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 22px 24px;
-  margin-bottom: 18px;
-  box-shadow: var(--shadow-card);
-}
-.card-head {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 18px; padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-.card-icon {
-  width: 36px; height: 36px; border-radius: 8px;
-  display: flex; align-items: center; justify-content: center; font-size: 17px;
-  flex-shrink: 0;
-}
-.ci-teal  { background: var(--teal-lt);   color: var(--teal); }
-.ci-amber { background: var(--amber-lt);  color: var(--amber); }
-.ci-green { background: var(--green-lt);  color: var(--green); }
-.ci-red   { background: var(--red-lt);    color: var(--red); }
-.ci-gray  { background: var(--gray-lt);   color: var(--gray); }
+/* ── BADGES ── */
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;letter-spacing:.05em;padding:3px 9px;border-radius:20px;text-transform:uppercase}
+.b-teal{background:var(--teal-lt);color:var(--teal-dk)}
+.b-green{background:var(--green-lt);color:var(--green)}
+.b-red{background:var(--red-lt);color:var(--red)}
+.b-gray{background:var(--gray-lt);color:var(--gray)}
+.b-amber{background:var(--amber-lt);color:var(--amber)}
+.b-orange{background:var(--orange-lt);color:var(--orange)}
 
-.card-head-text h2 {
-  font-family: 'Lora', serif; font-size: 1.05rem; font-weight: 600; color: var(--text);
-}
-.card-head-text p { font-size: 13px; color: var(--text-3); margin-top: 2px; }
+/* ── INFO BOX ── */
+.info-box{background:var(--teal-lt);border:1px solid rgba(8,145,178,.2);border-radius:var(--r-sm);padding:10px 13px;font-size:13px;color:var(--teal-dk);margin-bottom:13px;display:flex;gap:8px;align-items:flex-start}
+.warn-box{background:var(--amber-lt);border:1px solid rgba(194,113,10,.2);border-radius:var(--r-sm);padding:10px 13px;font-size:13px;color:var(--amber);margin-bottom:13px;display:flex;gap:8px;align-items:flex-start}
 
-.section-label {
-  font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
-  text-transform: uppercase; color: var(--text-3);
-  margin-bottom: 10px; margin-top: 20px;
-}
-.section-label:first-child { margin-top: 0; }
+/* ── NOTIFICATIONS ── */
+#notifs{position:fixed;top:60px;right:18px;z-index:999;display:flex;flex-direction:column;gap:7px;pointer-events:none}
+.notif{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 15px;font-size:13px;font-weight:500;box-shadow:var(--sh-lg);max-width:310px;display:flex;align-items:center;gap:8px;animation:nIn .22s ease;pointer-events:auto;color:var(--text)}
+.notif.success{border-left:3px solid var(--green)}
+.notif.error{border-left:3px solid var(--red)}
+.notif.info{border-left:3px solid var(--teal)}
+.notif.warn{border-left:3px solid var(--amber-mid)}
+@keyframes nIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+@keyframes nOut{to{opacity:0;transform:translateX(12px)}}
 
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
-.flex-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
-.flex-row > * { flex: 1; min-width: 180px; }
-hr.divider { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+/* ── SPINNER ── */
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:currentColor;border-radius:50%;animation:sp .65s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
 
-/* ══════════════════════════════
-   FORM ELEMENTS
-══════════════════════════════ */
-.form-group { margin-bottom: 14px; }
-.form-label {
-  display: block; font-size: 13px; font-weight: 600;
-  color: var(--text-2); margin-bottom: 5px;
-}
-input[type=text], input[type=email], textarea, select {
-  width: 100%; background: var(--surface2);
-  border: 1.5px solid var(--border);
-  border-radius: var(--r-sm);
-  color: var(--text); font-family: 'DM Sans', sans-serif;
-  font-size: 15px; padding: 9px 12px; outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-input:focus, textarea:focus, select:focus {
-  border-color: var(--teal); box-shadow: 0 0 0 3px rgba(8,145,178,0.12);
-  background: #fff;
-}
-input::placeholder, textarea::placeholder { color: var(--text-4); }
-textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
-select { -webkit-appearance: none; cursor: pointer; }
-.checkbox-label {
-  display: flex; align-items: center; gap: 8px;
-  cursor: pointer; font-size: 14px; color: var(--text-2); font-weight: 500;
-}
-.checkbox-label input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--teal); cursor: pointer; }
+/* ── CODE BLOCK ── */
+.code-block{background:#1c2b45;color:#7dd3fc;border-radius:var(--r-sm);padding:14px 16px;font-family:'DM Mono',monospace;font-size:12.5px;white-space:pre-wrap;word-break:break-word;overflow:auto;max-height:360px;line-height:1.7;border:1px solid rgba(255,255,255,.08)}
 
-/* ══════════════════════════════
-   BUTTONS
-══════════════════════════════ */
-.btn {
-  display: inline-flex; align-items: center; gap: 7px;
-  border: none; border-radius: var(--r-sm);
-  font-family: 'DM Sans', sans-serif; font-weight: 600;
-  font-size: 14px; cursor: pointer; transition: all 0.15s;
-  padding: 10px 20px; white-space: nowrap; text-decoration: none;
-}
-.btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
-.btn-primary  { background: var(--teal); color: #fff; }
-.btn-primary:hover  { background: var(--teal-dk); box-shadow: 0 2px 10px rgba(8,145,178,0.25); }
-.btn-amber    { background: var(--amber-mid); color: #fff; }
-.btn-amber:hover    { background: #d97706; box-shadow: 0 2px 10px rgba(245,158,11,0.25); }
-.btn-outline  { background: transparent; color: var(--teal); border: 1.5px solid var(--teal); }
-.btn-outline:hover  { background: var(--teal-lt); }
-.btn-ghost    { background: transparent; color: var(--text-3); border: 1.5px solid var(--border); }
-.btn-ghost:hover    { background: var(--bg2); color: var(--text); }
-.btn-sm { padding: 7px 14px; font-size: 13px; }
+/* ── PICO TAG ── */
+.ptag{display:inline-flex;align-items:center;background:var(--teal-lt);border:1px solid rgba(8,145,178,.25);color:var(--teal-dk);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-right:5px}
 
-/* ══════════════════════════════
-   FILE DROP
-══════════════════════════════ */
-.file-drop {
-  border: 2px dashed var(--border2); border-radius: var(--r);
-  padding: 24px; text-align: center; cursor: pointer;
-  transition: all 0.2s; position: relative; background: var(--surface2);
-}
-.file-drop:hover, .file-drop.dragover {
-  border-color: var(--teal); background: var(--teal-lt);
-}
-.file-drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
-.file-drop .di { font-size: 30px; margin-bottom: 8px; display: block; }
-.file-drop p { font-size: 14px; color: var(--text-3); }
-.file-drop strong { color: var(--teal); }
-.file-list { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
-.file-chip {
-  display: flex; align-items: center; gap: 5px;
-  background: var(--surface); border: 1px solid var(--border2);
-  border-radius: 20px; padding: 3px 10px; font-size: 12px;
-  color: var(--text-2); max-width: 180px; overflow: hidden;
-}
-.file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-chip .rm {
-  background: none; border: none; cursor: pointer;
-  color: var(--text-4); font-size: 13px; padding: 0; flex-shrink: 0; line-height: 1;
-}
-.file-chip .rm:hover { color: var(--red); }
+/* ── STAT BOX ── */
+.stat-box{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:15px 17px}
+.stat-box h4{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:5px}
+.stat-box .sv{font-family:'Lora',serif;font-size:1.55rem;font-weight:600;color:#0369a1}
+.stat-box .ss{font-size:12px;color:var(--text3);margin-top:3px}
 
-/* ══════════════════════════════
-   PROGRESS
-══════════════════════════════ */
-.progress-wrap { background: var(--bg2); border-radius: 20px; overflow: hidden; height: 5px; margin: 10px 0; }
-.progress-bar { height: 100%; border-radius: 20px; background: linear-gradient(90deg, var(--teal), var(--amber-mid)); transition: width 0.35s; }
-.progress-label { font-size: 13px; color: var(--text-3); }
+/* ── CHART BOX ── */
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:17px 19px;margin-bottom:16px;box-shadow:var(--sh);overflow-x:auto}
+.chart-title{font-family:'Lora',serif;font-size:.97rem;font-weight:600;color:var(--text);margin-bottom:13px;display:flex;align-items:center;gap:8px}
 
-/* ══════════════════════════════
-   TABLES
-══════════════════════════════ */
-.table-wrap { overflow-x: auto; border-radius: var(--r); border: 1px solid var(--border); }
-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-th {
-  background: var(--surface2); color: var(--text-3);
-  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
-  padding: 9px 13px; text-align: left; border-bottom: 1px solid var(--border);
-  white-space: nowrap; position: sticky; top: 0; z-index: 1;
-}
-td { padding: 9px 13px; border-bottom: 1px solid var(--border); color: var(--text-2); vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: var(--bg); }
-td input {
-  background: transparent; border: none; border-bottom: 1px solid var(--border);
-  color: var(--text); font-size: 13.5px; width: 100%; outline: none; padding: 1px 3px;
-  font-family: 'DM Sans', sans-serif;
-}
-td input:focus { border-bottom-color: var(--teal); }
+/* ── ROB TRAFFIC LIGHT ── */
+.rob-tl-wrap{overflow-x:auto}
+.rob-tbl{border-collapse:collapse;font-size:13px;min-width:580px;width:100%}
+.rob-tbl th{background:var(--surface2);font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);padding:8px 10px;text-align:center;border:1px solid var(--border);line-height:1.3}
+.rob-tbl th:first-child{text-align:left;min-width:120px}
+.rob-tbl th:nth-child(2){min-width:100px}
+.rob-tbl td{padding:7px 9px;border:1px solid var(--border);vertical-align:middle}
+.rob-tbl tr:hover td{background:var(--bg)}
+.rob-circle{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;margin:auto}
+.rl-low{background:#059669;color:#fff}
+.rl-some{background:#d97706;color:#fff}
+.rl-high{background:#dc2626;color:#fff}
+.rl-mod{background:#f59e0b;color:#fff}
+.rl-ser{background:#ea580c;color:#fff}
+.rl-crit{background:#be123c;color:#fff}
+.rl-ni{background:#9ca3af;color:#fff}
+.rob-legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border)}
+.rleg{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)}
+.rleg-dot{width:13px;height:13px;border-radius:50%}
 
-/* ══════════════════════════════
-   BADGES
-══════════════════════════════ */
-.badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
-  padding: 3px 9px; border-radius: 20px; text-transform: uppercase;
-}
-.b-teal   { background: var(--teal-lt);   color: var(--teal-dk); }
-.b-green  { background: var(--green-lt);  color: var(--green); }
-.b-yellow { background: var(--yellow-lt); color: var(--yellow); }
-.b-orange { background: var(--orange-lt); color: var(--orange); }
-.b-red    { background: var(--red-lt);    color: var(--red); }
-.b-gray   { background: var(--gray-lt);   color: var(--gray); }
-.b-amber  { background: var(--amber-lt);  color: var(--amber); }
+/* ── SCREENING ── */
+.sc-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 15px;margin-bottom:8px;display:grid;grid-template-columns:72px 1fr;gap:11px;align-items:start;box-shadow:var(--sh)}
+.sc-card.included{border-left:3px solid #059669}
+.sc-card.excluded{border-left:3px solid var(--text4)}
+.sc-pmid{font-family:'DM Mono',monospace;font-size:10.5px;color:var(--text3);font-weight:500}
+.sc-title{font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:3px;line-height:1.3}
+.sc-reason{font-size:12.5px;color:var(--text2);margin-top:2px}
+.sc-det{font-size:12px;color:var(--text3);margin-top:5px;line-height:1.5}
 
-/* ══════════════════════════════
-   INFO / ALERT BOXES
-══════════════════════════════ */
-.info-box {
-  background: var(--teal-lt); border: 1px solid rgba(8,145,178,0.2);
-  border-radius: var(--r-sm); padding: 11px 14px;
-  font-size: 13px; color: var(--teal-dk); margin-bottom: 14px;
-  display: flex; gap: 9px; align-items: flex-start;
-}
-.info-box .ii { font-size: 15px; flex-shrink: 0; }
-.warn-box {
-  background: var(--amber-lt); border: 1px solid rgba(194,113,10,0.2);
-  border-radius: var(--r-sm); padding: 11px 14px;
-  font-size: 13px; color: var(--amber); margin-bottom: 14px;
-  display: flex; gap: 9px; align-items: flex-start;
-}
+/* ── OUTCOME TYPE ── */
+.otype{display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:9px 13px;gap:10px}
+.otype label{font-size:13.5px;font-weight:500;color:var(--text);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.otype select{width:auto;font-size:13px;padding:4px 8px;flex-shrink:0;background:var(--surface)}
 
-/* ══════════════════════════════
-   NOTIFICATIONS
-══════════════════════════════ */
-#notif-wrap { position: fixed; top: 62px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.notif {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 11px 16px;
-  font-size: 13.5px; font-weight: 500;
-  box-shadow: var(--shadow-lg); max-width: 320px;
-  display: flex; align-items: center; gap: 9px;
-  animation: nIn 0.25s ease; pointer-events: auto; color: var(--text);
+/* ── MOBILE ── */
+#sb-ov{display:none;position:fixed;inset:0;background:rgba(28,25,23,.5);z-index:150}
+@media(max-width:900px){
+  #sidebar{transform:translateX(-260px)}
+  #sidebar.open{transform:translateX(0)}
+  #main{margin-left:0}
+  #hamburger{display:block}
+  #sb-ov.vis{display:block}
+  #content{padding:16px 13px}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+  .sc-card{grid-template-columns:1fr;gap:5px}
 }
-.notif.success { border-left: 3px solid var(--green); }
-.notif.error   { border-left: 3px solid var(--red); }
-.notif.info    { border-left: 3px solid var(--teal); }
-.notif.warn    { border-left: 3px solid var(--amber-mid); }
-@keyframes nIn  { from{opacity:0;transform:translateX(14px)} to{opacity:1;transform:translateX(0)} }
-@keyframes nOut { to{opacity:0;transform:translateX(14px)} }
-
-/* ══════════════════════════════
-   SPINNER
-══════════════════════════════ */
-.spinner {
-  display: inline-block; width: 15px; height: 15px;
-  border: 2px solid rgba(255,255,255,0.3); border-top-color: currentColor;
-  border-radius: 50%; animation: spin 0.65s linear infinite;
-}
-@keyframes spin { to{ transform: rotate(360deg) } }
-
-/* ══════════════════════════════
-   CODE BLOCK
-══════════════════════════════ */
-.code-block {
-  background: var(--side); color: #94c5dd;
-  border-radius: var(--r-sm); padding: 14px 16px;
-  font-family: 'DM Mono', monospace; font-size: 12.5px;
-  white-space: pre-wrap; word-break: break-all;
-  overflow: auto; max-height: 280px; line-height: 1.7;
-}
-
-/* ══════════════════════════════
-   STAT BOXES
-══════════════════════════════ */
-.stat-box {
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 16px 18px;
-}
-.stat-box h4 { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
-.stat-box .sv { font-family: 'Lora', serif; font-size: 1.6rem; font-weight: 600; color: var(--teal-dk); }
-.stat-box .ss { font-size: 12px; color: var(--text-3); margin-top: 3px; }
-
-/* ══════════════════════════════
-   CHART BOX
-══════════════════════════════ */
-.chart-box {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 18px 20px; margin-bottom: 18px;
-  box-shadow: var(--shadow-card); overflow-x: auto;
-}
-.chart-title {
-  font-family: 'Lora', serif; font-size: 1rem; font-weight: 600;
-  color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 9px;
-}
-
-/* ══════════════════════════════
-   ROB 2.0 TRAFFIC LIGHT
-══════════════════════════════ */
-.rob-tl-wrap { overflow-x: auto; }
-.rob-tl-table { border-collapse: collapse; font-size: 13px; min-width: 600px; width: 100%; }
-.rob-tl-table th {
-  background: var(--surface2); font-size: 11px; font-weight: 700;
-  letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-3);
-  padding: 9px 12px; text-align: center; border: 1px solid var(--border);
-  white-space: nowrap;
-}
-.rob-tl-table th:first-child { text-align: left; min-width: 130px; }
-.rob-tl-table th.domain-head { min-width: 90px; font-size: 10px; line-height: 1.3; }
-.rob-tl-table td { padding: 8px 10px; border: 1px solid var(--border); vertical-align: middle; }
-.rob-tl-table tr:hover td { background: var(--bg); }
-.rob-circle {
-  width: 30px; height: 30px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 700; margin: auto;
-}
-.rob-low      { background: #059669; color: #fff; }
-.rob-moderate { background: #f59e0b; color: #fff; }
-.rob-serious  { background: #ea580c; color: #fff; }
-.rob-critical { background: #be123c; color: #fff; }
-.rob-some     { background: #d97706; color: #fff; }
-.rob-high     { background: #dc2626; color: #fff; }
-.rob-ni       { background: #9ca3af; color: #fff; }
-.rob-legend {
-  display: flex; flex-wrap: wrap; gap: 10px;
-  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
-}
-.rob-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
-.rl-dot { width: 14px; height: 14px; border-radius: 50%; }
-
-/* ══════════════════════════════
-   SCREENING CARDS
-══════════════════════════════ */
-.screen-card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--r-sm); padding: 13px 16px; margin-bottom: 9px;
-  display: grid; grid-template-columns: 80px 1fr auto;
-  gap: 12px; align-items: start; box-shadow: var(--shadow-card);
-  transition: border-color 0.15s;
-}
-.screen-card.included { border-left: 3px solid var(--green); }
-.screen-card.excluded { border-left: 3px solid var(--text-4); }
-.sc-pmid { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-3); font-weight: 500; }
-.sc-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 3px; line-height: 1.35; }
-.sc-reason { font-size: 13px; color: var(--text-2); }
-.sc-details { font-size: 12px; color: var(--text-3); margin-top: 5px; line-height: 1.5; }
-
-/* ══════════════════════════════
-   PICO TAGS
-══════════════════════════════ */
-.pico-tag {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: var(--teal-lt); border: 1px solid rgba(8,145,178,0.25);
-  color: var(--teal-dk); font-size: 11px; font-weight: 700;
-  padding: 2px 9px; border-radius: 20px; margin-right: 5px;
-}
-
-/* ══════════════════════════════
-   OUTCOME TYPE STRIP
-══════════════════════════════ */
-.otype-item {
-  display: flex; align-items: center; justify-content: space-between;
-  background: var(--surface2); border: 1.5px solid var(--border);
-  border-radius: var(--r-sm); padding: 10px 14px; gap: 10px;
-}
-.otype-item label { font-size: 13.5px; font-weight: 500; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.otype-item select { width: auto; font-size: 13px; padding: 5px 8px; flex-shrink: 0; background: var(--surface); }
-
-/* ══════════════════════════════
-   MOBILE OVERLAY
-══════════════════════════════ */
-#sb-overlay { display: none; position: fixed; inset: 0; background: rgba(28,25,23,0.5); z-index: 150; }
-
-/* ══════════════════════════════
-   RESPONSIVE
-══════════════════════════════ */
-@media (max-width: 900px) {
-  #sidebar { transform: translateX(-260px); }
-  #sidebar.open { transform: translateX(0); }
-  #main-wrap { margin-left: 0; }
-  #hamburger { display: block; }
-  #sb-overlay.visible { display: block; }
-  #content { padding: 18px 14px; }
-  .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  .screen-card { grid-template-columns: 1fr; gap: 6px; }
-  .rob-tl-table { font-size: 11px; }
-  .rob-circle { width: 24px; height: 24px; font-size: 11px; }
-}
-@media (max-width: 540px) {
-  .flex-row > * { min-width: 100%; }
-  .btn { padding: 9px 14px; font-size: 13px; }
-  .card { padding: 16px; }
-}
+@media(max-width:540px){.flex-row>*{min-width:100%}.btn{padding:9px 13px;font-size:13px}.card{padding:15px}}
 </style>
 </head>
 <body>
@@ -598,1319 +244,1317 @@ td input:focus { border-bottom-color: var(--teal); }
 <nav id="sidebar">
   <div class="sb-logo">
     <div class="sb-logo-icon">🧬</div>
-    <div class="sb-logo-text">
+    <div>
       <h1>AI·Meta Analysis</h1>
       <p>Systematic Review Workbench</p>
     </div>
   </div>
-
   <div class="sb-api">
-    <div class="sb-api-label">🔑 Gemini API Key <div class="sb-api-dot" id="apiDot"></div></div>
+    <div class="sb-api-lbl">🔑 Gemini API Key <div class="sb-dot" id="apiDot"></div></div>
     <div class="sb-api-row">
       <input type="password" id="apiKeyInput" placeholder="AIza…" autocomplete="off">
     </div>
-    <div class="sb-api-btns">
-      <button class="sb-btn-sm" id="btnToggleKey">👁 顯示</button>
-      <button class="sb-btn-sm" id="btnSaveKey">💾 儲存</button>
+    <div class="sb-btns">
+      <button class="sb-btn" id="btnToggleKey">👁 顯示</button>
+      <button class="sb-btn" id="btnSaveKey">💾 儲存</button>
     </div>
   </div>
-
-  <div class="sb-section">
-    <div class="sb-section-label">工作流程</div>
-    <div class="sb-nav-item active" data-tab="tab-pico">
-      <span class="nav-icon">🎯</span> PICO 檢索策略 <span class="nav-step">1</span>
-    </div>
-    <div class="sb-nav-item" data-tab="tab-screen">
-      <span class="nav-icon">📂</span> 文獻篩選 <span class="nav-step">2</span>
-    </div>
-    <div class="sb-nav-item" data-tab="tab-rob">
-      <span class="nav-icon">⚠️</span> 偏差風險評讀 <span class="nav-step">3</span>
-    </div>
-    <div class="sb-nav-item" data-tab="tab-extract">
-      <span class="nav-icon">📊</span> 數據萃取 <span class="nav-step">4</span>
-    </div>
-    <div class="sb-nav-item" data-tab="tab-stats">
-      <span class="nav-icon">📈</span> 統計分析 <span class="nav-step">5</span>
-    </div>
+  <div class="sb-sec">
+    <div class="sb-sec-lbl">工作流程</div>
+    <div class="sb-item active" data-tab="tab-pico"><span class="ni">🎯</span>PICO 檢索策略<span class="ns">1</span></div>
+    <div class="sb-item" data-tab="tab-screen"><span class="ni">📂</span>文獻篩選<span class="ns">2</span></div>
+    <div class="sb-item" data-tab="tab-rob"><span class="ni">⚖️</span>偏差風險評讀<span class="ns">3</span></div>
+    <div class="sb-item" data-tab="tab-extract"><span class="ni">📊</span>數據萃取<span class="ns">4</span></div>
+    <div class="sb-item" data-tab="tab-stats"><span class="ni">📈</span>統計分析<span class="ns">5</span></div>
   </div>
-
-  <div class="sb-section">
-    <div class="sb-section-label">目前 PICO</div>
-    <div class="sb-pico-summary" id="sbPicoSummary">
-      <div class="sb-pico-row" style="color:rgba(255,255,255,0.25);font-size:12px;font-style:italic">尚未設定…</div>
-    </div>
+  <div class="sb-sec">
+    <div class="sb-sec-lbl">目前 PICO</div>
+    <div class="sb-pico" id="sbPico"><div class="sb-pico-row" style="color:rgba(255,255,255,.2);font-size:12px;font-style:italic">尚未設定…</div></div>
   </div>
 </nav>
-
-<!-- SIDEBAR OVERLAY (mobile) -->
-<div id="sb-overlay"></div>
+<div id="sb-ov"></div>
 
 <!-- MAIN -->
-<div id="main-wrap">
+<div id="main">
   <div id="topbar">
-    <div class="topbar-left">
+    <div style="display:flex;align-items:center;gap:10px">
       <button id="hamburger">☰</button>
       <div id="page-title">PICO 檢索策略</div>
     </div>
-    <div class="topbar-right">
-      <span class="step-pill" id="stepPill">Step 1 / 5</span>
-    </div>
+    <span class="step-pill" id="stepPill">Step 1 / 5</span>
   </div>
 
   <div id="content">
 
-    <!-- ══ TAB 1: PICO ══ -->
-    <div id="tab-pico" class="tab-pane active">
-      <div class="card">
-        <div class="card-head">
-          <div class="card-icon ci-teal">🎯</div>
-          <div class="card-head-text"><h2>研究主題與 PICO 自動拆解</h2><p>輸入研究主題，AI 識別 PICO 架構並生成 MeSH 策略</p></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">研究主題（Free Text）</label>
-          <input type="text" id="researchTopic" placeholder="例如：Neoadjuvant immunotherapy for cervical cancer compared to chemotherapy alone">
-        </div>
-        <button class="btn btn-primary" id="btnDecomposePico">
-          <span class="spinner" id="spinPico" style="display:none"></span>
-          ✨ AI 自動拆解 PICO
-        </button>
+  <!-- ══ TAB 1: PICO ══ -->
+  <div id="tab-pico" class="tab-pane active">
+    <div class="card">
+      <div class="card-head">
+        <div class="ci ci-teal">🎯</div>
+        <div class="cht"><h2>研究主題與 PICO 自動拆解</h2><p>輸入主題，AI 識別 P·I·C·O 並生成 MeSH 策略</p></div>
       </div>
-
-      <div class="card">
-        <div class="card-head">
-          <div class="card-icon ci-teal">📋</div>
-          <div class="card-head-text"><h2>PICO 欄位確認與編輯</h2></div>
-        </div>
-        <div class="grid-2">
-          <div class="form-group">
-            <label class="form-label"><span class="pico-tag">P</span> Population</label>
-            <textarea id="picoP" placeholder="研究族群，例如：Adult patients with locally advanced cervical cancer (stage IB2-IVA)"></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label"><span class="pico-tag">I</span> Intervention</label>
-            <textarea id="picoI" placeholder="介入措施，例如：Neoadjuvant immunotherapy (PD-1/PD-L1 inhibitors)"></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label"><span class="pico-tag">C</span> Comparison</label>
-            <textarea id="picoC" placeholder="對照組，例如：Neoadjuvant chemotherapy alone / Standard chemoradiotherapy"></textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label"><span class="pico-tag">O1</span> Primary Outcome</label>
-            <textarea id="picoO1" placeholder="主要結果，例如：Pathological complete response (pCR) rate"></textarea>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label"><span class="pico-tag">O2</span> Secondary Outcomes（逗號分隔）</label>
-          <textarea id="picoO2" placeholder="次要結果，例如：Overall survival (OS), Progression-free survival (PFS), Adverse events, R0 resection rate" style="min-height:60px"></textarea>
-        </div>
+      <div class="form-group">
+        <label class="form-label">研究主題（Free Text）</label>
+        <input type="text" id="researchTopic" placeholder="例如：Immunotherapy for cervical cancer vs chemotherapy">
       </div>
+      <button class="btn btn-primary" id="btnPico"><span class="spin" id="spPico" style="display:none"></span>✨ AI 自動拆解 PICO</button>
+    </div>
 
-      <div class="card">
-        <div class="card-head">
-          <div class="card-icon ci-amber">🔬</div>
-          <div class="card-head-text"><h2>PubMed 檢索策略生成</h2></div>
-        </div>
-        <div class="section-label">Study Design Filters</div>
-        <div class="flex-row" style="gap:16px;margin-bottom:14px">
-          <label class="checkbox-label"><input type="checkbox" id="fRCT"> 限定 RCT</label>
-          <label class="checkbox-label"><input type="checkbox" id="fNoRev" checked> 排除 Review/Meta-analysis</label>
-          <label class="checkbox-label"><input type="checkbox" id="fHuman" checked> 限定人體研究</label>
-          <label class="checkbox-label"><input type="checkbox" id="fEng" checked> 限定英文</label>
-        </div>
-        <button class="btn btn-amber" id="btnGenMesh">
-          <span class="spinner" id="spinMesh" style="display:none"></span>
-          🚀 生成 PubMed MeSH 策略
-        </button>
-        <div id="meshOut" style="margin-top:14px;display:none">
-          <div class="section-label">AI 建議檢索策略</div>
-          <div class="code-block" id="meshContent"></div>
+    <div class="card">
+      <div class="card-head"><div class="ci ci-teal">📋</div><div class="cht"><h2>PICO 確認</h2></div></div>
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label"><span class="ptag">P</span> Population</label><textarea id="picoP" placeholder="研究族群…"></textarea></div>
+        <div class="form-group"><label class="form-label"><span class="ptag">I</span> Intervention</label><textarea id="picoI" placeholder="介入措施…"></textarea></div>
+        <div class="form-group"><label class="form-label"><span class="ptag">C</span> Comparison</label><textarea id="picoC" placeholder="對照組…"></textarea></div>
+        <div class="form-group"><label class="form-label"><span class="ptag">O1</span> Primary Outcome</label><textarea id="picoO1" placeholder="主要結果…"></textarea></div>
+      </div>
+      <div class="form-group"><label class="form-label"><span class="ptag">O2</span> Secondary Outcomes（逗號分隔）</label><textarea id="picoO2" placeholder="次要結果…" style="min-height:56px"></textarea></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><div class="ci ci-amber">🔬</div><div class="cht"><h2>PubMed MeSH 策略生成</h2></div></div>
+      <div class="sec-lbl">Study Design Filters</div>
+      <div class="flex-row" style="gap:16px;margin-bottom:13px">
+        <label class="cb-lbl"><input type="checkbox" id="fRCT"> 限定 RCT</label>
+        <label class="cb-lbl"><input type="checkbox" id="fNoRev" checked> 排除 Review/Meta</label>
+        <label class="cb-lbl"><input type="checkbox" id="fHuman" checked> 限定人體研究</label>
+        <label class="cb-lbl"><input type="checkbox" id="fEng" checked> 限定英文</label>
+      </div>
+      <button class="btn btn-amber" id="btnMesh"><span class="spin" id="spMesh" style="display:none"></span>🚀 生成 MeSH 策略</button>
+      <div id="meshOut" style="margin-top:13px;display:none">
+        <div class="sec-lbl">AI 建議檢索策略</div>
+        <div class="code-block" id="meshContent"></div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" id="btnCopyMesh">📋 複製策略</button>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- ══ TAB 2: SCREENING ══ -->
-    <div id="tab-screen" class="tab-pane">
-      <div class="card">
-        <div class="card-head">
-          <div class="card-icon ci-teal">📥</div>
-          <div class="card-head-text"><h2>PMID 智能篩選</h2><p>自動抓取 PubMed 摘要，以 AI 依 PICO 標準篩選</p></div>
-        </div>
-        <div class="info-box"><span class="ii">ℹ️</span> 請先完成 Step 1 PICO 設定，篩選結果將自動傳遞至後續步驟。</div>
-        <div class="form-group">
-          <label class="form-label">PubMed PMIDs（逗號或換行分隔）</label>
-          <textarea id="pmidInput" rows="5" placeholder="16490324, 16380290, 10793055&#10;可直接貼上多個 PMID…"></textarea>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-primary" id="btnScreen">
-            <span class="spinner" id="spinScreen" style="display:none"></span>
-            🚀 開始智能篩選
-          </button>
-          <div id="screenCounts" style="display:none;display:flex;gap:8px">
-            <span class="badge b-green" id="countIncl">✓ 0 納入</span>
-            <span class="badge b-gray" id="countExcl">✗ 0 排除</span>
-          </div>
-        </div>
-        <div id="screenProg" style="display:none;margin-top:12px">
-          <div class="progress-wrap"><div class="progress-bar" id="screenBar" style="width:0%"></div></div>
-          <div class="progress-label" id="screenStatus">準備中…</div>
+  <!-- ══ TAB 2: SCREEN ══ -->
+  <div id="tab-screen" class="tab-pane">
+    <div class="card">
+      <div class="card-head"><div class="ci ci-teal">📥</div><div class="cht"><h2>PMID 智能篩選</h2><p>並行 AI 批次篩選，速度更快</p></div></div>
+      <div class="info-box"><span>ℹ️</span> 請先完成 Step 1 PICO 設定。篩選採批次並行，速度比單篇逐一快 3–5 倍。</div>
+      <div class="form-group">
+        <label class="form-label">PubMed PMIDs（逗號或換行分隔）</label>
+        <textarea id="pmidInput" rows="5" placeholder="16490324, 16380290, 10793055&#10;可貼上多個 PMID…"></textarea>
+      </div>
+      <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btnScreen"><span class="spin" id="spScreen" style="display:none"></span>🚀 開始智能篩選</button>
+        <div id="screenCounts" style="display:none;display:flex;gap:7px">
+          <span class="badge b-green" id="cntIncl">✓ 0 納入</span>
+          <span class="badge b-gray" id="cntExcl">✗ 0 排除</span>
         </div>
       </div>
-      <div id="screenList"></div>
+      <div id="screenProg" style="display:none;margin-top:11px">
+        <div class="prog-wrap"><div class="prog-bar" id="screenBar" style="width:0%"></div></div>
+        <div class="prog-lbl" id="screenStat">準備中…</div>
+      </div>
     </div>
+    <!-- Filter bar -->
+    <div id="screenFilterBar" style="display:none;margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--text3);font-weight:600">顯示：</span>
+      <button class="btn btn-sm btn-primary" id="filterAll">全部</button>
+      <button class="btn btn-sm btn-outline" id="filterIncl">✓ 僅顯示建議納入</button>
+      <button class="btn btn-sm btn-ghost" id="filterExcl">✗ 僅顯示排除</button>
+    </div>
+    <div id="screenList"></div>
+  </div>
 
-    <!-- ══ TAB 3: ROB ══ -->
-    <div id="tab-rob" class="tab-pane">
-      <div class="card">
-        <div class="card-head">
-          <div class="card-icon ci-amber">⚖️</div>
-          <div class="card-head-text">
-            <h2>偏差風險評讀 — RoB 2.0 &amp; ROBINS-I</h2>
-            <p>AI 自動偵測研究設計，RCT 使用 RoB 2.0；非 RCT 使用 ROBINS-I</p>
-          </div>
-        </div>
-        <div class="warn-box"><span class="ii">💡</span>
-          <div><b>評讀工具說明：</b> RoB 2.0（Cochrane）適用於隨機對照試驗（RCT）；ROBINS-I（非隨機介入研究評讀）適用於觀察性研究、世代研究、病例對照研究等非 RCT 設計。AI 將從 PDF 中自動辨識研究設計並套用對應工具。</div>
-        </div>
-        <div class="grid-2">
-          <div class="form-group">
-            <label class="form-label">主要 Outcome</label>
-            <input type="text" id="robPrimary" placeholder="例如：Pathological complete response rate">
-          </div>
-          <div class="form-group">
-            <label class="form-label">次要 Outcomes（逗號分隔）</label>
-            <input type="text" id="robSecondary" placeholder="例如：Overall survival, Adverse events">
-          </div>
-        </div>
-        <div style="margin-bottom:14px">
-          <button class="btn btn-ghost btn-sm" id="btnSyncRob">🔄 從 PICO 同步 Outcomes</button>
+  <!-- ══ TAB 3: ROB ══ -->
+  <div id="tab-rob" class="tab-pane">
+    <div class="card">
+      <div class="card-head"><div class="ci ci-amber">⚖️</div><div class="cht"><h2>偏差風險評讀 — RoB 2.0 &amp; ROBINS-I</h2><p>AI 自動偵測 RCT / Non-RCT，套用對應工具</p></div></div>
+      <div class="warn-box"><span>💡</span>
+        <div><b>工具說明：</b> RCT → RoB 2.0（5 domains）；非 RCT / 觀察性研究 → ROBINS-I（7 domains）。Outcomes 已自動從 Step 1 同步，可手動修改。</div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">主要 Outcome <span style="font-size:11px;color:var(--text3);font-weight:400">（已從 Step 1 同步）</span></label>
+          <input type="text" id="robPrimary" placeholder="例如：Pathological complete response rate">
         </div>
         <div class="form-group">
-          <label class="form-label">上傳 PDF 全文（命名：Author Year.pdf，可多選）</label>
-          <div class="file-drop" id="robDrop">
-            <input type="file" id="robFilesInput" accept=".pdf" multiple>
-            <span class="di">📄</span>
-            <p>拖拽 PDF 至此，或 <strong>點擊選擇</strong></p>
-            <div class="file-list" id="robFileList"></div>
-          </div>
-        </div>
-        <button class="btn btn-amber" id="btnRob">
-          <span class="spinner" id="spinRob" style="display:none"></span>
-          🚀 開始 RoB 評讀
-        </button>
-        <div id="robProg" style="display:none;margin-top:12px">
-          <div class="progress-wrap"><div class="progress-bar" id="robBar" style="width:0%"></div></div>
-          <div class="progress-label" id="robStatus">準備中…</div>
+          <label class="form-label">次要 Outcomes <span style="font-size:11px;color:var(--text3);font-weight:400">（逗號分隔）</span></label>
+          <input type="text" id="robSecondary" placeholder="例如：OS, PFS, Adverse events">
         </div>
       </div>
-
-      <!-- RoB Results -->
-      <div id="robResults" style="display:none">
-        <div class="card">
-          <div class="card-head">
-            <div class="card-icon ci-amber">🚦</div>
-            <div class="card-head-text"><h2>Traffic Light Plot</h2><p>RoB 2.0（RCT）藍色標示；ROBINS-I（非 RCT）棕色標示</p></div>
-          </div>
-
-          <!-- RoB 2.0 section -->
-          <div id="rob2section">
-            <div class="section-label">RoB 2.0 — 隨機對照試驗 (RCT)</div>
-            <div class="rob-tl-wrap">
-              <table class="rob-tl-table" id="rob2table"></table>
-            </div>
-            <div class="rob-legend">
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#059669"></div>Low Risk</div>
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#d97706"></div>Some Concerns</div>
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#dc2626"></div>High Risk</div>
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#9ca3af"></div>No Information</div>
-            </div>
-          </div>
-
-          <hr class="divider" id="robDivider" style="display:none">
-
-          <!-- ROBINS-I section -->
-          <div id="robins_section" style="display:none">
-            <div class="section-label">ROBINS-I — 非隨機介入研究 (Non-RCT / Observational)</div>
-            <div class="rob-tl-wrap">
-              <table class="rob-tl-table" id="robinsTable"></table>
-            </div>
-            <div class="rob-legend">
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#059669"></div>Low</div>
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#f59e0b"></div>Moderate</div>
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#ea580c"></div>Serious</div>
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#be123c"></div>Critical</div>
-              <div class="rob-legend-item"><div class="rl-dot" style="background:#9ca3af"></div>No Information</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="chart-box">
-          <div class="chart-title">📊 RoB Summary — All Studies</div>
-          <div id="robSummaryChart"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head"><div class="card-icon ci-amber">📋</div><div class="card-head-text"><h2>評讀詳細記錄</h2></div></div>
-          <div class="table-wrap" id="robDetailTable"></div>
-        </div>
+      <div style="margin-bottom:13px"><button class="btn btn-ghost btn-sm" id="btnSyncRob">🔄 重新同步 Outcomes</button></div>
+      <div class="form-group">
+        <label class="form-label">上傳 PDF 全文（命名格式：Author Year.pdf）</label>
+        <div class="file-drop" id="robDrop"><input type="file" id="robFilesInp" accept=".pdf" multiple>
+          <span class="di">📄</span><p>拖拽 PDF 或 <strong>點擊選擇</strong>（可多選）</p>
+          <div class="file-list" id="robFL"></div></div>
+      </div>
+      <button class="btn btn-amber" id="btnRob"><span class="spin" id="spRob" style="display:none"></span>🚀 開始 RoB 評讀</button>
+      <div id="robProg" style="display:none;margin-top:11px">
+        <div class="prog-wrap"><div class="prog-bar" id="robBar" style="width:0%"></div></div>
+        <div class="prog-lbl" id="robStat">準備中…</div>
       </div>
     </div>
 
-    <!-- ══ TAB 4: EXTRACTION ══ -->
-    <div id="tab-extract" class="tab-pane">
+    <div id="robResults" style="display:none">
       <div class="card">
-        <div class="card-head">
-          <div class="card-icon ci-teal">📊</div>
-          <div class="card-head-text"><h2>一鍵數據萃取</h2><p>AI 自動生成特徵表與各 Outcome 數據表，支援人工校正後下載</p></div>
-        </div>
-        <div class="section-label">Outcome 資料型態設定</div>
-        <div id="outcomeTypeWrap" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-          <div class="info-box"><span class="ii">ℹ️</span> 請先完成 Step 1 PICO / Step 3 Outcome 設定，此處會自動顯示。</div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">上傳 PDF（可使用 Step 3 已上傳的同一批檔案）</label>
-          <div class="file-drop" id="extDrop">
-            <input type="file" id="extFilesInput" accept=".pdf" multiple>
-            <span class="di">📄</span>
-            <p>拖拽 PDF，或 <strong>點擊選擇</strong></p>
-            <div class="file-list" id="extFileList"></div>
+        <div class="card-head"><div class="ci ci-amber">🚦</div><div class="cht"><h2>Traffic Light Plot</h2></div></div>
+        <div id="rob2sec"><div class="sec-lbl" style="color:#0369a1">▶ RoB 2.0 — 隨機對照試驗 (RCT)</div>
+          <div class="rob-tl-wrap"><table class="rob-tbl" id="rob2tbl"></table></div>
+          <div class="rob-legend">
+            <div class="rleg"><div class="rleg-dot" style="background:#059669"></div>Low Risk</div>
+            <div class="rleg"><div class="rleg-dot" style="background:#d97706"></div>Some Concerns</div>
+            <div class="rleg"><div class="rleg-dot" style="background:#dc2626"></div>High Risk</div>
+            <div class="rleg"><div class="rleg-dot" style="background:#9ca3af"></div>No Information</div>
           </div>
         </div>
-        <button class="btn btn-amber" id="btnExtract">
-          <span class="spinner" id="spinExtract" style="display:none"></span>
-          🚀 全面啟動：生成特徵表 + 萃取所有 Outcomes
-        </button>
-        <div id="extProg" style="display:none;margin-top:12px">
-          <div class="progress-wrap"><div class="progress-bar" id="extBar" style="width:0%"></div></div>
-          <div class="progress-label" id="extStatus">準備中…</div>
+        <hr class="div" id="robDiv" style="display:none">
+        <div id="robinsSec" style="display:none"><div class="sec-lbl" style="color:#c2710a">▶ ROBINS-I — 非隨機介入研究 (Non-RCT)</div>
+          <div class="rob-tl-wrap"><table class="rob-tbl" id="robinsTbl"></table></div>
+          <div class="rob-legend">
+            <div class="rleg"><div class="rleg-dot" style="background:#059669"></div>Low</div>
+            <div class="rleg"><div class="rleg-dot" style="background:#f59e0b"></div>Moderate</div>
+            <div class="rleg"><div class="rleg-dot" style="background:#ea580c"></div>Serious</div>
+            <div class="rleg"><div class="rleg-dot" style="background:#be123c"></div>Critical</div>
+            <div class="rleg"><div class="rleg-dot" style="background:#9ca3af"></div>No Info</div>
+          </div>
         </div>
       </div>
-      <div id="extractResults"></div>
+      <div class="chart-box"><div class="chart-title">📊 RoB Summary</div><div id="robChart"></div></div>
+      <div class="card"><div class="card-head"><div class="ci ci-amber">📋</div><div class="cht"><h2>評讀詳表</h2></div></div>
+        <div class="tbl-wrap" id="robDetailWrap"></div></div>
     </div>
+  </div>
 
-    <!-- ══ TAB 5: STATS ══ -->
-    <div id="tab-stats" class="tab-pane">
-      <div class="card">
-        <div class="card-head">
-          <div class="card-icon ci-teal">📈</div>
-          <div class="card-head-text"><h2>統計分析 — Human-in-the-Loop</h2><p>上傳校正後的 CSV/XLSX，執行 Meta-Analysis 並生成互動圖表</p></div>
-        </div>
-        <div class="info-box"><span class="ii">💡</span> 先在 Step 4 下載 CSV → 手動校正數值 → 上傳此處分析。每個檔名即為 Outcome 名稱。</div>
-        <div class="form-group">
-          <label class="form-label">上傳校正後的 CSV / XLSX（可多檔）</label>
-          <div class="file-drop" id="statsDrop">
-            <input type="file" id="statsFilesInput" accept=".csv,.xlsx" multiple>
-            <span class="di">📊</span>
-            <p>拖拽 CSV / XLSX，或 <strong>點擊選擇</strong></p>
-            <div class="file-list" id="statsFileList"></div>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="form-group">
-            <label class="form-label">選擇 Outcome</label>
-            <select id="statsOutcomeSel"><option value="">— 請先上傳檔案 —</option></select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">資料型態</label>
-            <select id="statsDataType">
-              <option value="Binary">Binary — 二元（Events / Total）</option>
-              <option value="Continuous">Continuous — 連續（Mean / SD / N）</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-primary" id="btnRunStats">
-          <span class="spinner" id="spinStats" style="display:none"></span>
-          🚀 執行 Meta-Analysis
-        </button>
+  <!-- ══ TAB 4: EXTRACT ══ -->
+  <div id="tab-extract" class="tab-pane">
+    <div class="card">
+      <div class="card-head"><div class="ci ci-teal">📊</div><div class="cht"><h2>一鍵數據萃取</h2><p>AI 生成特徵表與各 Outcome 數據，支援人工校正後下載</p></div></div>
+      <div class="sec-lbl">Outcome 資料型態設定</div>
+      <div id="outcomeTypes" style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
+        <div class="info-box"><span>ℹ️</span> 請先在 Step 1/3 設定 Outcome。</div>
       </div>
-
-      <div id="statsResults" style="display:none">
-        <div class="grid-3" id="statsSummaryBoxes" style="margin-bottom:18px"></div>
-        <div class="chart-box">
-          <div class="chart-title">🌲 Forest Plot — Random Effects (DerSimonian-Laird)</div>
-          <div id="forestPlot"></div>
-        </div>
-        <div class="grid-2">
-          <div class="chart-box">
-            <div class="chart-title">🌪️ Funnel Plot</div>
-            <div id="funnelPlot"></div>
-          </div>
-          <div class="chart-box">
-            <div class="chart-title">📉 Leave-One-Out Sensitivity</div>
-            <div id="looPlot"></div>
-          </div>
-        </div>
-        <div class="chart-box">
-          <div class="chart-title">🔍 Influence Diagnostics</div>
-          <div id="influencePlot"></div>
-        </div>
+      <div class="form-group">
+        <label class="form-label">上傳 PDF（可複用 Step 3 同批檔案）</label>
+        <div class="file-drop" id="extDrop"><input type="file" id="extFilesInp" accept=".pdf" multiple>
+          <span class="di">📄</span><p>拖拽 PDF 或 <strong>點擊選擇</strong></p>
+          <div class="file-list" id="extFL"></div></div>
+      </div>
+      <button class="btn btn-amber" id="btnExtract"><span class="spin" id="spExtract" style="display:none"></span>🚀 全面啟動：特徵表 + 萃取所有 Outcomes</button>
+      <div id="extProg" style="display:none;margin-top:11px">
+        <div class="prog-wrap"><div class="prog-bar" id="extBar" style="width:0%"></div></div>
+        <div class="prog-lbl" id="extStat">準備中…</div>
       </div>
     </div>
+    <div id="extractResults"></div>
+  </div>
 
-  </div><!-- end #content -->
-</div><!-- end #main-wrap -->
+  <!-- ══ TAB 5: STATS ══ -->
+  <div id="tab-stats" class="tab-pane">
+    <div class="card">
+      <div class="card-head"><div class="ci ci-teal">📈</div><div class="cht"><h2>統計分析 — Human-in-the-Loop</h2><p>上傳校正後的 CSV/XLSX，自動執行 Meta-Analysis</p></div></div>
+      <div class="info-box"><span>💡</span> Step 4 下載 CSV → 手動校正數值 → 上傳此處分析。檔名 = Outcome 名稱。</div>
+      <div class="form-group">
+        <label class="form-label">上傳 CSV / XLSX（可多檔，分析前可刪除）</label>
+        <div class="file-drop" id="statsDrop"><input type="file" id="statsFilesInp" accept=".csv,.xlsx" multiple>
+          <span class="di">📊</span><p>拖拽 CSV / XLSX 或 <strong>點擊選擇</strong></p></div>
+      </div>
+      <!-- Stats file list with delete -->
+      <div id="statsFileCards" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
+      <div class="grid-2">
+        <div class="form-group"><label class="form-label">選擇 Outcome</label>
+          <select id="statsOutcomeSel"><option value="">— 請先上傳檔案 —</option></select></div>
+        <div class="form-group"><label class="form-label">資料型態</label>
+          <select id="statsDataType">
+            <option value="Binary">Binary（Events / Total）</option>
+            <option value="Continuous">Continuous（Mean / SD / N）</option>
+          </select></div>
+      </div>
+      <button class="btn btn-primary" id="btnStats"><span class="spin" id="spStats" style="display:none"></span>🚀 執行 Meta-Analysis</button>
+    </div>
 
-<div id="notif-wrap"></div>
+    <div id="statsResults" style="display:none">
+      <div class="grid-3" id="statsSumBoxes" style="margin-bottom:16px"></div>
+      <div class="chart-box"><div class="chart-title">🌲 Forest Plot — Random Effects (DerSimonian-Laird)</div><div id="forestPlot"></div></div>
+      <div class="grid-2">
+        <div class="chart-box"><div class="chart-title">🌪️ Funnel Plot</div><div id="funnelPlot"></div></div>
+        <div class="chart-box"><div class="chart-title">📉 Leave-One-Out Sensitivity</div><div id="looPlot"></div></div>
+      </div>
+      <div class="chart-box"><div class="chart-title">🔍 Influence Diagnostics</div><div id="inflPlot"></div></div>
+    </div>
+  </div>
+
+  </div><!-- #content -->
+</div><!-- #main -->
+
+<div id="notifs"></div>
 
 <script>
 'use strict';
-// ═══════════════════════════════════════
-// PDF.js
-// ═══════════════════════════════════════
-if(typeof pdfjsLib !== 'undefined')
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// ── PDF.js ──
+if(typeof pdfjsLib!=='undefined')
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-// ═══════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════
-const S = {
-  robFiles:   [],
-  extFiles:   [],
-  statsFiles: [],
-  statsData:  {},
-  outcomeTypes: {},
-  robResults: { rob2: [], robins: [] },
-  charTable: null,
-  extractedDS: {},
+// ── STATE ──
+const S={
+  robFiles:[],extFiles:[],
+  statsData:{},       // {name: rows[]}
+  outcomeTypes:{},
+  robResults:{rob2:[],robins:[]},
+  charTable:null,
+  extractedDS:{},
+  screeningResults:[], // store for filter
 };
 
-// ═══════════════════════════════════════
-// API KEY
-// ═══════════════════════════════════════
-const getKey = () => localStorage.getItem('gApiKey') || '';
-const setKey = k => localStorage.setItem('gApiKey', k);
-const updateDot = () => {
-  const ok = getKey().length > 10;
-  document.getElementById('apiDot').classList.toggle('ok', ok);
-};
-document.getElementById('apiKeyInput').addEventListener('input', updateDot);
-document.getElementById('btnSaveKey').addEventListener('click', () => {
-  const v = document.getElementById('apiKeyInput').value.trim();
-  if(!v) return notify('請輸入 API Key', 'warn');
-  setKey(v); updateDot(); notify('API Key 已儲存 💾', 'success');
+// ── API KEY ──
+const getKey=()=>localStorage.getItem('gKey')||'';
+const setKey=k=>localStorage.setItem('gKey',k);
+const updateDot=()=>document.getElementById('apiDot').classList.toggle('ok',getKey().length>10);
+document.getElementById('apiKeyInput').addEventListener('input',updateDot);
+document.getElementById('btnSaveKey').addEventListener('click',()=>{
+  const v=document.getElementById('apiKeyInput').value.trim();
+  if(!v) return notify('請輸入 API Key','warn');
+  setKey(v);updateDot();notify('API Key 已儲存 💾','success');
 });
-document.getElementById('btnToggleKey').addEventListener('click', () => {
-  const i = document.getElementById('apiKeyInput');
-  i.type = i.type === 'password' ? 'text' : 'password';
+document.getElementById('btnToggleKey').addEventListener('click',()=>{
+  const i=document.getElementById('apiKeyInput');
+  i.type=i.type==='password'?'text':'password';
 });
-(()=>{ const k = getKey(); if(k){ document.getElementById('apiKeyInput').value = k; updateDot(); } })();
+(()=>{const k=getKey();if(k){document.getElementById('apiKeyInput').value=k;updateDot();}})();
 
-// ═══════════════════════════════════════
-// NOTIFICATIONS
-// ═══════════════════════════════════════
-function notify(msg, type='info', ms=3500) {
-  const icons = {success:'✅',error:'❌',info:'ℹ️',warn:'⚠️'};
-  const el = document.createElement('div');
-  el.className = `notif ${type}`;
-  el.innerHTML = `<span>${icons[type]||'•'}</span><span>${msg}</span>`;
-  document.getElementById('notif-wrap').appendChild(el);
-  setTimeout(() => {
-    el.style.animation = 'nOut 0.25s ease forwards';
-    setTimeout(() => el.remove(), 250);
-  }, ms);
+// ── NOTIFICATIONS ──
+function notify(msg,type='info',ms=3500){
+  const icons={success:'✅',error:'❌',info:'ℹ️',warn:'⚠️'};
+  const el=document.createElement('div');
+  el.className=`notif ${type}`;
+  el.innerHTML=`<span>${icons[type]||'•'}</span><span>${msg}</span>`;
+  document.getElementById('notifs').appendChild(el);
+  setTimeout(()=>{el.style.animation='nOut .22s ease forwards';setTimeout(()=>el.remove(),220);},ms);
 }
 
-// ═══════════════════════════════════════
-// SIDEBAR NAV
-// ═══════════════════════════════════════
-const TAB_NAMES = {
-  'tab-pico':    ['PICO 檢索策略', 'Step 1 / 5'],
-  'tab-screen':  ['文獻篩選',      'Step 2 / 5'],
-  'tab-rob':     ['偏差風險評讀',  'Step 3 / 5'],
-  'tab-extract': ['數據萃取',      'Step 4 / 5'],
-  'tab-stats':   ['統計分析',      'Step 5 / 5'],
+// ── SIDEBAR NAV ──
+const TAB_META={
+  'tab-pico':['PICO 檢索策略','Step 1 / 5'],
+  'tab-screen':['文獻篩選','Step 2 / 5'],
+  'tab-rob':['偏差風險評讀','Step 3 / 5'],
+  'tab-extract':['數據萃取','Step 4 / 5'],
+  'tab-stats':['統計分析','Step 5 / 5'],
 };
-document.querySelectorAll('.sb-nav-item').forEach(item => {
-  item.addEventListener('click', () => {
-    const tabId = item.dataset.tab;
-    document.querySelectorAll('.sb-nav-item').forEach(i => i.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+document.querySelectorAll('.sb-item').forEach(item=>{
+  item.addEventListener('click',()=>{
+    const tid=item.dataset.tab;
+    document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
     item.classList.add('active');
-    document.getElementById(tabId).classList.add('active');
-    document.getElementById('page-title').textContent = TAB_NAMES[tabId][0];
-    document.getElementById('stepPill').textContent = TAB_NAMES[tabId][1];
-    if(tabId === 'tab-extract') renderOutcomeTypes();
-    closeSidebar();
+    document.getElementById(tid).classList.add('active');
+    document.getElementById('page-title').textContent=TAB_META[tid][0];
+    document.getElementById('stepPill').textContent=TAB_META[tid][1];
+    if(tid==='tab-extract') renderOutcomeTypes();
+    if(tid==='tab-rob') autoFillRobOutcomes();
+    closeSB();
   });
 });
-// Mobile hamburger
-const sb = document.getElementById('sidebar');
-const ov = document.getElementById('sb-overlay');
-document.getElementById('hamburger').addEventListener('click', () => { sb.classList.add('open'); ov.classList.add('visible'); });
-function closeSidebar(){ sb.classList.remove('open'); ov.classList.remove('visible'); }
-ov.addEventListener('click', closeSidebar);
+const sb=document.getElementById('sidebar'),sbOv=document.getElementById('sb-ov');
+document.getElementById('hamburger').addEventListener('click',()=>{sb.classList.add('open');sbOv.classList.add('vis');});
+function closeSB(){sb.classList.remove('open');sbOv.classList.remove('vis');}
+sbOv.addEventListener('click',closeSB);
 
-// ═══════════════════════════════════════
-// GEMINI API
-// ═══════════════════════════════════════
-async function gemini(prompt, maxTok=2000) {
-  const k = getKey();
-  if(!k) throw new Error('請先輸入並儲存 Gemini API Key');
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${k}`,
-    { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ contents:[{role:'user',parts:[{text:prompt}]}],
-        generationConfig:{maxOutputTokens:maxTok, temperature:0.15} }) }
-  );
-  if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error?.message||`API 錯誤 ${r.status}`); }
-  const d = await r.json();
-  if(!d.candidates?.[0]?.content?.parts?.[0]?.text) throw new Error('AI 回傳空白，請重試');
-  return d.candidates[0].content.parts[0].text;
+// ── GEMINI API ── (with retry)
+async function gemini(prompt,maxTok=2000){
+  const k=getKey();
+  if(!k) throw new Error('請先儲存 Gemini API Key');
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      const r=await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${k}`,
+        {method:'POST',headers:{'Content-Type':'application/json'},
+         body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],
+           generationConfig:{maxOutputTokens:maxTok,temperature:0.1}})}
+      );
+      if(r.status===429){await sleep(3000);continue;}
+      if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error?.message||`API error ${r.status}`);}
+      const d=await r.json();
+      const txt=d.candidates?.[0]?.content?.parts?.[0]?.text;
+      if(!txt) throw new Error('AI 回傳空白');
+      return txt;
+    }catch(e){if(attempt===1)throw e;await sleep(1500);}
+  }
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+// Parallel batch: run up to `concurrency` at once
+async function batchGemini(prompts,maxTok=600,concurrency=4){
+  const results=new Array(prompts.length).fill(null);
+  let idx=0;
+  async function worker(){
+    while(idx<prompts.length){
+      const i=idx++;
+      try{results[i]=await gemini(prompts[i],maxTok);}
+      catch(e){results[i]='ERROR:'+e.message;}
+    }
+  }
+  await Promise.all(Array.from({length:Math.min(concurrency,prompts.length)},worker));
+  return results;
 }
 
-// ═══════════════════════════════════════
-// PDF READER
-// ═══════════════════════════════════════
-async function readPdf(file, maxPages=null) {
-  const ab = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data:ab}).promise;
-  const n = maxPages ? Math.min(pdf.numPages, maxPages) : pdf.numPages;
-  let txt = '';
+// ── PDF READER ──
+async function readPdf(file,maxPages=null){
+  const ab=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+  const n=maxPages?Math.min(pdf.numPages,maxPages):pdf.numPages;
+  let txt='';
   for(let i=1;i<=n;i++){
-    const pg = await pdf.getPage(i);
-    const c = await pg.getTextContent();
-    txt += c.items.map(it=>it.str).join(' ') + '\n';
+    const pg=await pdf.getPage(i);
+    const c=await pg.getTextContent();
+    txt+=c.items.map(it=>it.str).join(' ')+'\n';
   }
   return txt;
 }
 
-// ═══════════════════════════════════════
-// FILE DROP HELPER
-// ═══════════════════════════════════════
-function setupDrop(dropId, inputId, listId, stateKey, exts) {
-  const drop = document.getElementById(dropId);
-  const inp  = document.getElementById(inputId);
-  inp.addEventListener('change', e => { addFiles(stateKey, listId, [...e.target.files]); inp.value=''; });
-  drop.addEventListener('dragover', e=>{ e.preventDefault(); drop.classList.add('dragover'); });
-  drop.addEventListener('dragleave', ()=> drop.classList.remove('dragover'));
-  drop.addEventListener('drop', e => {
-    e.preventDefault(); drop.classList.remove('dragover');
-    addFiles(stateKey, listId, [...e.dataTransfer.files].filter(f=>exts.some(x=>f.name.toLowerCase().endsWith(x))));
+// ── FILE DROP HELPER ──
+function setupDrop(dropId,inpId,listId,stateKey,exts){
+  const drop=document.getElementById(dropId),inp=document.getElementById(inpId);
+  inp.addEventListener('change',e=>{addFiles(stateKey,listId,[...e.target.files]);inp.value='';});
+  drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('dv');});
+  drop.addEventListener('dragleave',()=>drop.classList.remove('dv'));
+  drop.addEventListener('drop',e=>{
+    e.preventDefault();drop.classList.remove('dv');
+    addFiles(stateKey,listId,[...e.dataTransfer.files].filter(f=>exts.some(x=>f.name.toLowerCase().endsWith(x))));
   });
 }
-function addFiles(key, listId, files) {
-  const arr = S[key];
-  files.forEach(f => { if(!arr.find(e=>e.name===f.name&&e.size===f.size)) arr.push(f); });
-  renderFileList(listId, key);
+function addFiles(key,listId,files){
+  const arr=S[key];
+  files.forEach(f=>{if(!arr.find(e=>e.name===f.name&&e.size===f.size))arr.push(f);});
+  renderFL(listId,key);
 }
-function renderFileList(listId, key) {
-  const el = document.getElementById(listId);
-  el.innerHTML = S[key].map((f,i)=>
+function renderFL(listId,key){
+  const el=document.getElementById(listId);
+  el.innerHTML=S[key].map((f,i)=>
     `<div class="file-chip"><span>📄 ${f.name}</span>
-     <button class="rm" data-i="${i}" data-k="${key}" data-l="${listId}">✕</button></div>`).join('');
+     <button class="rm" data-i="${i}" data-k="${key}" data-l="${listId}" title="移除">✕</button></div>`).join('');
   el.querySelectorAll('.rm').forEach(b=>b.addEventListener('click',e=>{
-    e.stopPropagation(); S[b.dataset.k].splice(+b.dataset.i,1); renderFileList(b.dataset.l, b.dataset.k);
+    e.stopPropagation();S[b.dataset.k].splice(+b.dataset.i,1);renderFL(b.dataset.l,b.dataset.k);
   }));
 }
-setupDrop('robDrop','robFilesInput','robFileList','robFiles',['.pdf']);
-setupDrop('extDrop','extFilesInput','extFileList','extFiles',['.pdf']);
-setupDrop('statsDrop','statsFilesInput','statsFileList','statsFiles',['.csv','.xlsx']);
+setupDrop('robDrop','robFilesInp','robFL','robFiles',['.pdf']);
+setupDrop('extDrop','extFilesInp','extFL','extFiles',['.pdf']);
 
-// Stats file loading
-document.getElementById('statsFilesInput').addEventListener('change', async e=>{
-  [...e.target.files].forEach(f=>{ if(!S.statsFiles.find(x=>x.name===f.name)) S.statsFiles.push(f); });
-  document.getElementById('statsFilesInput').value='';
-  renderFileList('statsFileList','statsFiles');
-  await loadStatsFiles();
-});
-document.getElementById('statsDrop').addEventListener('drop', async e=>{
-  e.preventDefault(); document.getElementById('statsDrop').classList.remove('dragover');
-  [...e.dataTransfer.files].filter(f=>f.name.match(/\.(csv|xlsx)$/i)).forEach(f=>{
-    if(!S.statsFiles.find(x=>x.name===f.name)) S.statsFiles.push(f);
+// ── STATS FILE HANDLING (fix 5: delete before analysis) ──
+document.getElementById('statsFilesInp').addEventListener('change',async e=>{
+  [...e.target.files].forEach(f=>{
+    if(!S.statsData[f.name.replace(/\.(csv|xlsx)$/i,'')]){
+      // store raw file temporarily
+      if(!S._statsRaw) S._statsRaw=[];
+      if(!S._statsRaw.find(x=>x.name===f.name)) S._statsRaw.push(f);
+    }
   });
-  renderFileList('statsFileList','statsFiles');
-  await loadStatsFiles();
+  document.getElementById('statsFilesInp').value='';
+  await parseAndRenderStatsFiles();
 });
-async function loadStatsFiles() {
-  S.statsData = {};
-  for(const f of S.statsFiles){
+document.getElementById('statsDrop').addEventListener('dragover',e=>{e.preventDefault();document.getElementById('statsDrop').classList.add('dv');});
+document.getElementById('statsDrop').addEventListener('dragleave',()=>document.getElementById('statsDrop').classList.remove('dv'));
+document.getElementById('statsDrop').addEventListener('drop',async e=>{
+  e.preventDefault();document.getElementById('statsDrop').classList.remove('dv');
+  const files=[...e.dataTransfer.files].filter(f=>f.name.match(/\.(csv|xlsx)$/i));
+  if(!S._statsRaw) S._statsRaw=[];
+  files.forEach(f=>{if(!S._statsRaw.find(x=>x.name===f.name))S._statsRaw.push(f);});
+  await parseAndRenderStatsFiles();
+});
+S._statsRaw=[];
+async function parseAndRenderStatsFiles(){
+  for(const f of S._statsRaw){
+    const name=f.name.replace(/\.(csv|xlsx)$/i,'');
+    if(S.statsData[name]) continue;
     try{
-      const name = f.name.replace(/\.(csv|xlsx)$/i,'');
       if(f.name.endsWith('.xlsx')){
-        const ab = await f.arrayBuffer();
-        const wb = XLSX.read(ab,{type:'array'});
-        S.statsData[name] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+        const ab=await f.arrayBuffer();
+        const wb=XLSX.read(ab,{type:'array'});
+        S.statsData[name]=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
       } else {
-        S.statsData[name] = Papa.parse(await f.text(),{header:true,skipEmptyLines:true,dynamicTyping:false}).data;
+        S.statsData[name]=Papa.parse(await f.text(),{header:true,skipEmptyLines:true,dynamicTyping:false}).data;
       }
-    } catch(e){ notify(`讀取 ${f.name} 失敗`,'error'); }
+    }catch(e){notify(`讀取 ${f.name} 失敗: ${e.message}`,'error');}
   }
-  const keys = Object.keys(S.statsData);
-  const sel = document.getElementById('statsOutcomeSel');
-  sel.innerHTML = keys.length ? keys.map(k=>`<option value="${k}">${k}</option>`).join('') : '<option value="">— 請先上傳檔案 —</option>';
-  if(keys.length) notify(`已載入 ${keys.length} 個資料集 ✓`,'success');
+  renderStatsFileCards();
+  const keys=Object.keys(S.statsData);
+  const sel=document.getElementById('statsOutcomeSel');
+  sel.innerHTML=keys.length?keys.map(k=>`<option value="${k}">${k}</option>`):'<option value="">— 請先上傳 —</option>';
+  if(keys.length) notify(`載入 ${keys.length} 個資料集 ✓`,'success');
+}
+function renderStatsFileCards(){
+  const el=document.getElementById('statsFileCards');
+  const keys=Object.keys(S.statsData);
+  el.innerHTML=keys.map(name=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 12px;">
+      <div><span style="font-size:13px;font-weight:600">📊 ${name}</span>
+        <span style="font-size:12px;color:var(--text3);margin-left:8px">${(S.statsData[name]||[]).length} rows</span></div>
+      <button class="btn btn-danger btn-sm" data-name="${name}">🗑 刪除</button>
+    </div>`).join('');
+  el.querySelectorAll('[data-name]').forEach(b=>b.addEventListener('click',()=>{
+    const n=b.dataset.name;
+    delete S.statsData[n];
+    S._statsRaw=(S._statsRaw||[]).filter(f=>f.name.replace(/\.(csv|xlsx)$/i,'')!==n);
+    renderStatsFileCards();
+    const keys=Object.keys(S.statsData);
+    const sel=document.getElementById('statsOutcomeSel');
+    sel.innerHTML=keys.length?keys.map(k=>`<option value="${k}">${k}</option>`):'<option value="">— 請先上傳 —</option>';
+    notify(`已刪除 ${n}`,'info');
+  }));
 }
 
-// ═══════════════════════════════════════
-// PICO helpers
-// ═══════════════════════════════════════
-function getPico() {
-  return {
-    p: document.getElementById('picoP').value.trim(),
-    i: document.getElementById('picoI').value.trim(),
-    c: document.getElementById('picoC').value.trim(),
-    o1: document.getElementById('picoO1').value.trim(),
-    o2: document.getElementById('picoO2').value.trim(),
-  };
-}
-function setPico(p,i,c,o1,o2) {
-  document.getElementById('picoP').value = p;
-  document.getElementById('picoI').value = i;
-  document.getElementById('picoC').value = c;
-  document.getElementById('picoO1').value = o1;
-  document.getElementById('picoO2').value = o2;
+// ── PICO HELPERS ──
+function getPico(){return{p:$v('picoP'),i:$v('picoI'),c:$v('picoC'),o1:$v('picoO1'),o2:$v('picoO2')};}
+function $v(id){return document.getElementById(id).value.trim();}
+function setPico(p,i,c,o1,o2){
+  ['picoP','picoI','picoC','picoO1','picoO2'].forEach((id,idx)=>{
+    document.getElementById(id).value=[p,i,c,o1,o2][idx]||'';
+  });
   updateSbPico();
 }
-function updateSbPico() {
-  const pico = getPico();
-  const any = pico.p||pico.i||pico.c||pico.o1;
-  const el = document.getElementById('sbPicoSummary');
-  if(!any){ el.innerHTML='<div class="sb-pico-row" style="color:rgba(255,255,255,0.25);font-size:12px;font-style:italic">尚未設定…</div>'; return; }
-  const row = (tag,val) => val ? `<div class="sb-pico-row"><b>${tag}:</b> ${val.substring(0,60)}${val.length>60?'…':''}</div>` : '';
-  el.innerHTML = row('P',pico.p)+row('I',pico.i)+row('C',pico.c)+row('O1',pico.o1);
+function updateSbPico(){
+  const pico=getPico();
+  const el=document.getElementById('sbPico');
+  const any=pico.p||pico.i||pico.c||pico.o1;
+  if(!any){el.innerHTML='<div class="sb-pico-row" style="color:rgba(255,255,255,.2);font-size:12px;font-style:italic">尚未設定…</div>';return;}
+  const r=(tag,val)=>val?`<div class="sb-pico-row"><b>${tag}:</b> ${val.substring(0,55)}${val.length>55?'…':''}</div>`:'';
+  el.innerHTML=r('P',pico.p)+r('I',pico.i)+r('C',pico.c)+r('O1',pico.o1);
 }
 ['picoP','picoI','picoC','picoO1','picoO2','researchTopic'].forEach(id=>{
-  document.getElementById(id).addEventListener('input', ()=>{
+  document.getElementById(id).addEventListener('input',()=>{
     const pico=getPico();
-    localStorage.setItem('metaPico', JSON.stringify({topic:document.getElementById('researchTopic').value,...pico}));
+    localStorage.setItem('metaPico',JSON.stringify({topic:$v('researchTopic'),...pico}));
     updateSbPico();
   });
 });
-// Restore
 try{
-  const sv = JSON.parse(localStorage.getItem('metaPico')||'{}');
-  if(sv.topic) document.getElementById('researchTopic').value = sv.topic;
+  const sv=JSON.parse(localStorage.getItem('metaPico')||'{}');
+  if(sv.topic) document.getElementById('researchTopic').value=sv.topic;
   if(sv.p) setPico(sv.p,sv.i,sv.c,sv.o1,sv.o2);
-} catch(e){}
+}catch(e){}
 
-// ═══════════════════════════════════════
-// TAB 1: PICO AI decompose
-// ═══════════════════════════════════════
-document.getElementById('btnDecomposePico').addEventListener('click', async ()=>{
-  const topic = document.getElementById('researchTopic').value.trim();
+function autoFillRobOutcomes(){
+  const pico=getPico();
+  if(!document.getElementById('robPrimary').value && pico.o1)
+    document.getElementById('robPrimary').value=pico.o1;
+  if(!document.getElementById('robSecondary').value && pico.o2)
+    document.getElementById('robSecondary').value=pico.o2;
+}
+
+// ── TAB 1: PICO ──
+document.getElementById('btnPico').addEventListener('click',async()=>{
+  const topic=$v('researchTopic');
   if(!topic) return notify('請輸入研究主題','warn');
-  const btn=document.getElementById('btnDecomposePico'), sp=document.getElementById('spinPico');
-  btn.disabled=true; sp.style.display='inline-block';
+  const btn=document.getElementById('btnPico'),sp=document.getElementById('spPico');
+  btn.disabled=true;sp.style.display='inline-block';
   try{
-    const res = await gemini(
-      `Analyze: "${topic}". Extract P, I, C, Primary Outcome, Secondary Outcomes (comma-separated list).
-Return ONLY this format (5 pipe-separated English values, no extra text):
-P | I | C | O1 | O2
-Example: Adult patients with cervical cancer | Neoadjuvant immunotherapy | Chemotherapy alone | Pathological complete response | Overall survival, PFS, Adverse events`, 400);
-    const p = res.trim().split('|').map(s=>s.trim());
-    if(p.length>=5){ setPico(p[0],p[1],p[2],p[3],p[4]); notify('PICO 拆解成功 ✓','success'); }
+    const res=await gemini(
+      `Analyze the research topic: "${topic}".
+Identify PICO: Population, Intervention, Comparison, Primary Outcome, Secondary Outcomes.
+Return ONLY this single line format with exactly 5 parts separated by " | ":
+P | I | C | O1 | O2 (comma-separated list for O2)
+IMPORTANT: Plain English only. No markdown. No extra text.
+Example: Adult cervical cancer patients | Neoadjuvant immunotherapy | Chemotherapy alone | Pathological complete response | Overall survival, PFS, Grade 3+ adverse events`,400);
+    const parts=res.trim().split('|').map(s=>s.trim());
+    if(parts.length>=5){setPico(parts[0],parts[1],parts[2],parts[3],parts[4]);notify('PICO 拆解成功 ✓','success');}
     else notify('AI 格式異常，請手動填寫','warn');
-  } catch(e){ notify(e.message,'error'); }
-  btn.disabled=false; sp.style.display='none';
+  }catch(e){notify(e.message,'error');}
+  btn.disabled=false;sp.style.display='none';
 });
 
-// MeSH
-document.getElementById('btnGenMesh').addEventListener('click', async ()=>{
+// FIX 1: MeSH — plain text, no markdown, 4000 tokens
+document.getElementById('btnMesh').addEventListener('click',async()=>{
   const pico=getPico();
   if(!pico.p) return notify('請先填寫 PICO','warn');
-  const btn=document.getElementById('btnGenMesh'), sp=document.getElementById('spinMesh');
-  btn.disabled=true; sp.style.display='inline-block';
-  const filters = [];
+  const btn=document.getElementById('btnMesh'),sp=document.getElementById('spMesh');
+  btn.disabled=true;sp.style.display='inline-block';
+  const filters=[];
   if(document.getElementById('fRCT').checked)   filters.push('Randomized Controlled Trials only');
   if(document.getElementById('fNoRev').checked) filters.push('Exclude Reviews and Meta-analyses');
   if(document.getElementById('fHuman').checked) filters.push('Humans only');
   if(document.getElementById('fEng').checked)   filters.push('English language only');
   try{
-    const res = await gemini(`You are a PubMed expert librarian. Build a comprehensive search strategy.
-PICO: P=${pico.p}, I=${pico.i}, C=${pico.c}, O=${pico.o1}; ${pico.o2}
+    const res=await gemini(
+      `You are a PubMed expert librarian. Create a complete search strategy.
+PICO:
+P: ${pico.p}
+I: ${pico.i}
+C: ${pico.c}
+O: ${pico.o1}; ${pico.o2}
 Filters: ${filters.join(', ')||'None'}
-Format:
+
+IMPORTANT OUTPUT RULES:
+- Output plain text ONLY. No markdown asterisks, no ** bold **, no bullet symbols.
+- Use simple section headers like === SECTION === on its own line.
+- Use indented plain text for lists.
+
+Format your output in these sections:
 === MeSH Terms ===
-[list each component with MeSH terms]
-=== Key Synonyms ===
-[free-text synonyms]
+P MeSH: [list terms]
+I MeSH: [list terms]
+C MeSH: [list terms]
+O MeSH: [list terms]
+
+=== Key Synonyms / Free Text ===
+[list important synonyms and free-text alternatives]
+
 === Complete PubMed Query ===
-[full Boolean query ready to paste into PubMed]
-=== Filter Tags ===
-[e.g., "Randomized Controlled Trial"[pt] AND "Humans"[Mesh]]`, 1500);
-    document.getElementById('meshContent').textContent = res;
-    document.getElementById('meshOut').style.display = 'block';
+[Full ready-to-paste Boolean query with AND/OR/NOT and field tags like [Mesh] [tiab] [pt]]
+
+=== Filter Strings ===
+[Add filter tags here, e.g., "Randomized Controlled Trial"[pt] AND "Humans"[Mesh]]`,4000);
+    document.getElementById('meshContent').textContent=res;
+    document.getElementById('meshOut').style.display='block';
     notify('MeSH 策略生成完成 ✓','success');
-  } catch(e){ notify(e.message,'error'); }
-  btn.disabled=false; sp.style.display='none';
+  }catch(e){notify(e.message,'error');}
+  btn.disabled=false;sp.style.display='none';
 });
 
-// ═══════════════════════════════════════
-// TAB 2: SCREENING
-// ═══════════════════════════════════════
+document.getElementById('btnCopyMesh').addEventListener('click',()=>{
+  const txt=document.getElementById('meshContent').textContent;
+  navigator.clipboard.writeText(txt).then(()=>notify('已複製至剪貼簿 ✓','success')).catch(()=>notify('複製失敗','error'));
+});
+
+// ── TAB 2: SCREENING (FIX 2: parallel batch) ──
 async function fetchPubmed(pmids){
-  const r = await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmids.join(',')}&rettype=medline&retmode=text&email=researcher@example.com`);
-  if(!r.ok) throw new Error(`PubMed API 錯誤 ${r.status}`);
+  const r=await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmids.join(',')}&rettype=medline&retmode=text&email=researcher@example.com`);
+  if(!r.ok) throw new Error(`PubMed API error ${r.status}`);
   return r.text();
 }
 function parseMedline(txt){
   return txt.split(/\n(?=PMID- )/).map(rec=>{
     const lines=rec.split('\n');
-    const g=(p)=>{ const l=lines.find(ln=>ln.startsWith(p)); return l?l.slice(p.length).trim():''; };
-    const ga=(p)=>lines.filter(ln=>ln.startsWith(p)).map(ln=>ln.slice(p.length).trim());
-    const pmid=g('PMID- '), title=g('TI  - '), ab=g('AB  - '), year=g('DP  - ').slice(0,4);
-    const au=ga('FAU - '), fa=au[0]?au[0].split(',')[0].trim():'Unknown';
-    return { pmid, title, abstract:ab, year, firstAuthor:fa, studyId:`${fa} ${year}` };
+    const g=p=>{const l=lines.find(ln=>ln.startsWith(p));return l?l.slice(p.length).trim():'';};
+    const ga=p=>lines.filter(ln=>ln.startsWith(p)).map(ln=>ln.slice(p.length).trim());
+    const pmid=g('PMID- '),title=g('TI  - '),ab=g('AB  - '),year=g('DP  - ').slice(0,4);
+    const au=ga('FAU - '),fa=au[0]?au[0].split(',')[0].trim():'Unknown';
+    return{pmid,title,abstract:ab,year,firstAuthor:fa,studyId:`${fa} ${year}`};
   }).filter(r=>r.pmid);
 }
-document.getElementById('btnScreen').addEventListener('click', async ()=>{
-  const raw = document.getElementById('pmidInput').value.trim();
+
+document.getElementById('btnScreen').addEventListener('click',async()=>{
+  const raw=$v('pmidInput');
   if(!raw) return notify('請輸入 PMID','warn');
-  const pmids = raw.replace(/\n/g,',').split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s));
+  const pmids=raw.replace(/\n/g,',').split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s));
   if(!pmids.length) return notify('找不到有效 PMID','error');
   const pico=getPico();
-  const btn=document.getElementById('btnScreen'), sp=document.getElementById('spinScreen');
-  const progEl=document.getElementById('screenProg'), bar=document.getElementById('screenBar'), stat=document.getElementById('screenStatus');
-  btn.disabled=true; sp.style.display='inline-block'; progEl.style.display='block';
+  const btn=document.getElementById('btnScreen'),sp=document.getElementById('spScreen');
+  const prog=document.getElementById('screenProg'),bar=document.getElementById('screenBar'),stat=document.getElementById('screenStat');
+  btn.disabled=true;sp.style.display='inline-block';prog.style.display='block';
+  document.getElementById('screenFilterBar').style.display='none';
   document.getElementById('screenList').innerHTML='';
+  S.screeningResults=[];
   try{
-    stat.textContent=`抓取 ${pmids.length} 篇 PubMed 摘要…`; bar.style.width='5%';
-    const medline = await fetchPubmed(pmids);
-    const arts = parseMedline(medline);
-    if(!arts.length) { notify('無法解析 PubMed 回應','error'); return; }
-    const results=[];
-    for(let i=0;i<arts.length;i++){
-      const a=arts[i];
-      stat.textContent=`篩選中 (${i+1}/${arts.length})：PMID ${a.pmid}`;
-      bar.style.width=`${5+(i+1)/arts.length*90}%`;
-      try{
-        const res=await gemini(
-          `Role: Systematic Review Screener.
-PICO: P:${pico.p||'N/A'}, I:${pico.i||'N/A'}, C:${pico.c||'N/A'}, O:${pico.o1||'N/A'}
-Respond ONLY with 7 pipe-separated values:
-INCLUDED or EXCLUDED | Reason (繁體中文) | Study Design | Population | Intervention | Control | Outcomes
+    stat.textContent=`抓取 ${pmids.length} 篇 PubMed 摘要…`;bar.style.width='5%';
+    const medline=await fetchPubmed(pmids);
+    const arts=parseMedline(medline);
+    if(!arts.length){notify('無法解析 PubMed 資料','error');return;}
+    stat.textContent=`並行 AI 篩選 ${arts.length} 篇…`;bar.style.width='15%';
 
+    // Build all prompts at once, then batch-run for speed (FIX 2)
+    const prompts=arts.map(a=>
+      `You are a systematic review screener.
+PICO: P:${pico.p||'N/A'}, I:${pico.i||'N/A'}, C:${pico.c||'N/A'}, O:${pico.o1||'N/A'}
+Respond ONLY with exactly 7 values separated by " | ":
+INCLUDED or EXCLUDED | Reason in 繁體中文 (1-2 sentences) | Study Design | Population | Intervention | Control | Outcomes
 Title: ${a.title}
-Abstract: ${a.abstract||'(no abstract)'}`, 500);
-        const p=res.trim().split('|').map(s=>s.trim());
-        results.push({...a,
-          status: p[0]?.toUpperCase().includes('INCL')?'INCLUDED':'EXCLUDED',
-          reason:p[1]||'', design:p[2]||'', population:p[3]||'', intervention:p[4]||'', control:p[5]||'', outcomes:p[6]||''
-        });
-      } catch(e){ results.push({...a,status:'ERROR',reason:e.message}); }
-    }
+Abstract: ${(a.abstract||'').substring(0,600)}`);
+
+    // Run in batches of 5 concurrently
+    const aiResults=await batchGemini(prompts,400,5);
+    bar.style.width='90%';
+
+    const results=arts.map((a,i)=>{
+      const raw=aiResults[i]||'';
+      if(raw.startsWith('ERROR:')){return{...a,status:'ERROR',reason:raw.slice(6),design:'',population:'',intervention:'',control:'',outcomes:''};}
+      const parts=raw.trim().split('|').map(s=>s.trim());
+      return{...a,
+        status:parts[0]?.toUpperCase().includes('INCL')?'INCLUDED':'EXCLUDED',
+        reason:parts[1]||'',design:parts[2]||'',population:parts[3]||'',
+        intervention:parts[4]||'',control:parts[5]||'',outcomes:parts[6]||''};
+    });
     bar.style.width='100%';
-    renderScreenResults(results);
-  } catch(e){ notify(e.message,'error'); }
-  btn.disabled=false; sp.style.display='none';
+    S.screeningResults=results;
+    renderScreenResults(results,'all');
+    const inc=results.filter(r=>r.status==='INCLUDED').length;
+    const exc=results.filter(r=>r.status!=='INCLUDED').length;
+    document.getElementById('cntIncl').textContent=`✓ ${inc} 納入`;
+    document.getElementById('cntExcl').textContent=`✗ ${exc} 排除`;
+    document.getElementById('screenCounts').style.display='flex';
+    document.getElementById('screenFilterBar').style.display='flex';
+    notify(`篩選完成：${inc} 納入，${exc} 排除`,'success',4000);
+  }catch(e){notify(e.message,'error');}
+  btn.disabled=false;sp.style.display='none';
 });
-function renderScreenResults(results){
-  const inc=results.filter(r=>r.status==='INCLUDED').length;
-  const exc=results.filter(r=>r.status!=='INCLUDED').length;
-  const cw=document.getElementById('screenCounts');
-  cw.style.display='flex';
-  document.getElementById('countIncl').textContent=`✓ ${inc} 納入`;
-  document.getElementById('countExcl').textContent=`✗ ${exc} 排除`;
-  const list=document.getElementById('screenList');
-  list.innerHTML=results.map(r=>{
-    const inc=r.status==='INCLUDED';
-    const det=inc?`<div class="sc-details">🔬 ${r.design} · 👥 ${r.population} · 💉 ${r.intervention}</div>`:'';
-    return `<div class="screen-card ${inc?'included':'excluded'}">
-      <div><div class="sc-pmid">PMID ${r.pmid}</div>
-        <span class="badge ${inc?'b-green':'b-gray'}" style="margin-top:6px">${inc?'✓ 納入':'✗ 排除'}</span>
-        <div style="font-size:11px;color:var(--text-4);margin-top:4px">${r.studyId}</div></div>
-      <div><div class="sc-title">${r.title||'(No title)'}</div>
-        <div class="sc-reason">📝 ${r.reason}</div>${det}</div>
-      <div></div></div>`;
-  }).join('');
-  notify(`篩選完成：${inc} 納入，${exc} 排除`,'success',4000);
+
+// FIX 2: Filter buttons
+document.getElementById('filterAll').addEventListener('click',()=>{
+  setActiveFilter('all');renderScreenResults(S.screeningResults,'all');});
+document.getElementById('filterIncl').addEventListener('click',()=>{
+  setActiveFilter('incl');renderScreenResults(S.screeningResults,'incl');});
+document.getElementById('filterExcl').addEventListener('click',()=>{
+  setActiveFilter('excl');renderScreenResults(S.screeningResults,'excl');});
+function setActiveFilter(f){
+  ['filterAll','filterIncl','filterExcl'].forEach(id=>document.getElementById(id).classList.remove('btn-primary'));
+  ['filterAll','filterIncl','filterExcl'].forEach(id=>document.getElementById(id).className=document.getElementById(id).className.replace('btn-primary','btn-ghost'));
+  const map={'all':'filterAll','incl':'filterIncl','excl':'filterExcl'};
+  const el=document.getElementById(map[f]);
+  el.className=el.className.replace('btn-ghost','btn-primary');
 }
 
-// ═══════════════════════════════════════
-// TAB 3: ROB
-// ═══════════════════════════════════════
-document.getElementById('btnSyncRob').addEventListener('click', ()=>{
+function renderScreenResults(results,filter){
+  let list=results;
+  if(filter==='incl') list=results.filter(r=>r.status==='INCLUDED');
+  if(filter==='excl') list=results.filter(r=>r.status!=='INCLUDED');
+  const el=document.getElementById('screenList');
+  if(!list.length){el.innerHTML='<div class="card" style="text-align:center;color:var(--text3);padding:30px">無符合條件的結果</div>';return;}
+  el.innerHTML=list.map(r=>{
+    const inc=r.status==='INCLUDED';
+    const det=inc?`<div class="sc-det">🔬 ${r.design||'-'} · 👥 ${r.population||'-'} · 💉 ${r.intervention||'-'}</div>`:'';
+    return `<div class="sc-card ${inc?'included':'excluded'}">
+      <div><div class="sc-pmid">PMID ${r.pmid}</div>
+        <span class="badge ${inc?'b-green':'b-gray'}" style="margin-top:5px">${inc?'✓ 納入':'✗ 排除'}</span>
+        <div style="font-size:11px;color:var(--text4);margin-top:3px">${r.studyId}</div></div>
+      <div><div class="sc-title">${r.title||'(no title)'}</div>
+        <div class="sc-reason">📝 ${r.reason}</div>${det}</div></div>`;
+  }).join('');
+}
+
+// ── TAB 3: ROB (FIX 3: auto-fill from Step 1) ──
+document.getElementById('btnSyncRob').addEventListener('click',()=>{
   const pico=getPico();
   document.getElementById('robPrimary').value=pico.o1;
   document.getElementById('robSecondary').value=pico.o2;
   notify('Outcomes 已同步 ✓','success');
 });
 
-// RoB 2.0 domains
-const ROB2_DOMAINS = [
-  {key:'D1', label:'D1\nRandomization'},
-  {key:'D2', label:'D2\nDeviations'},
-  {key:'D3', label:'D3\nMissing Data'},
-  {key:'D4', label:'D4\nMeasurement'},
-  {key:'D5', label:'D5\nReporting'},
-  {key:'Overall', label:'Overall\nBias'},
-];
-// ROBINS-I domains
-const ROBINS_DOMAINS = [
-  {key:'D1', label:'D1\nConfounding'},
-  {key:'D2', label:'D2\nSelection'},
-  {key:'D3', label:'D3\nClassification'},
-  {key:'D4', label:'D4\nDeviations'},
-  {key:'D5', label:'D5\nMissing Data'},
-  {key:'D6', label:'D6\nMeasurement'},
-  {key:'D7', label:'D7\nReporting'},
-  {key:'Overall', label:'Overall\nBias'},
-];
+const ROB2_D=['D1 Randomization','D2 Deviations','D3 Missing Data','D4 Measurement','D5 Reporting','Overall'];
+const ROBINS_D=['D1 Confounding','D2 Selection','D3 Classification','D4 Deviations','D5 Missing Data','D6 Measurement','D7 Reporting','Overall'];
 
-function getRobCircle(risk, tool){
-  const r=(risk||'').trim().toLowerCase();
-  if(r.includes('low'))      return {cls:'rob-low',sym:'+'};
-  if(r.includes('moderate')) return {cls:'rob-moderate',sym:'M'};
-  if(r.includes('serious'))  return {cls:'rob-serious',sym:'S'};
-  if(r.includes('critical')) return {cls:'rob-critical',sym:'!'};
-  if(r.includes('high'))     return {cls:'rob-high',sym:'–'};
-  if(r.includes('some'))     return {cls:'rob-some',sym:'?'};
-  return {cls:'rob-ni',sym:'?'};
+function getRobStyle(risk){
+  const r=(risk||'').toLowerCase();
+  if(r.includes('low'))      return{cls:'rl-low',sym:'+'};
+  if(r.includes('moderate')) return{cls:'rl-mod',sym:'M'};
+  if(r.includes('serious'))  return{cls:'rl-ser',sym:'S'};
+  if(r.includes('critical')) return{cls:'rl-crit',sym:'!'};
+  if(r.includes('high'))     return{cls:'rl-high',sym:'–'};
+  if(r.includes('some'))     return{cls:'rl-some',sym:'?'};
+  return{cls:'rl-ni',sym:'?'};
 }
 
-document.getElementById('btnRob').addEventListener('click', async ()=>{
-  const files = S.robFiles;
+document.getElementById('btnRob').addEventListener('click',async()=>{
+  const files=S.robFiles;
   if(!files.length) return notify('請上傳 PDF','warn');
-  const primary = document.getElementById('robPrimary').value.trim();
+  const primary=$v('robPrimary');
   if(!primary) return notify('請填寫主要 Outcome','warn');
-  const secondary = document.getElementById('robSecondary').value.trim();
-  const btn=document.getElementById('btnRob'), sp=document.getElementById('spinRob');
-  const prog=document.getElementById('robProg'), bar=document.getElementById('robBar'), stat=document.getElementById('robStatus');
-  btn.disabled=true; sp.style.display='inline-block'; prog.style.display='block';
+  const secondary=$v('robSecondary');
+  const btn=document.getElementById('btnRob'),sp=document.getElementById('spRob');
+  const prog=document.getElementById('robProg'),bar=document.getElementById('robBar'),stat=document.getElementById('robStat');
+  btn.disabled=true;sp.style.display='inline-block';prog.style.display='block';
   S.robResults={rob2:[],robins:[]};
+  const secList=secondary?secondary.split(',').map(s=>s.trim()).filter(s=>s).join(', '):'N/A';
 
   for(let i=0;i<files.length;i++){
     const f=files[i];
     stat.textContent=`評讀中 (${i+1}/${files.length})：${f.name}`;
     bar.style.width=`${(i+1)/files.length*100}%`;
     try{
-      const text = await readPdf(f,12);
-      // Step 1: detect study type
-      const typeRes = await gemini(`From this study text, identify the study design.
-Respond with EXACTLY ONE of: RCT or NON-RCT
-(RCT = randomized controlled trial; NON-RCT = cohort, case-control, observational, quasi-experimental, etc.)
-No other text.
-Text: ${text.substring(0,3000)}`, 20);
-      const isRCT = typeRes.trim().toUpperCase().includes('RCT') && !typeRes.trim().toUpperCase().includes('NON');
-
-      const secList = secondary ? secondary.split(',').map(s=>s.trim()).filter(s=>s).join(', ') : 'N/A';
+      const text=await readPdf(f,12);
+      // Detect study type
+      const typeRes=await gemini(`From this study text, is this a randomized controlled trial (RCT) or not?
+Reply with ONLY "RCT" or "NON-RCT". No other text.
+Text: ${text.substring(0,2000)}`,10);
+      const isRCT=typeRes.trim().toUpperCase()==='RCT';
 
       if(isRCT){
-        const prompt = `You are a Cochrane RoB 2.0 expert.
-Assess risk of bias for EACH outcome separately (Primary: ${primary}; Secondary: ${secList}).
-For each outcome output ONE pipe-separated line (no header, no extra text):
-StudyID | Outcome | D1(Randomization) | D2(Deviations) | D3(MissingData) | D4(Measurement) | D5(Reporting) | Overall | Reasoning(繁體中文)
+        const res=await gemini(
+          `You are a Cochrane RoB 2.0 expert. Assess this RCT for EACH outcome.
+Primary outcome: ${primary}
+Secondary outcomes: ${secList}
 
-Each Dx rating must be EXACTLY: Low / Some concerns / High
-StudyID format: "FirstAuthor Year"
-Text: ${text.substring(0,8000)}`;
-        const res = await gemini(prompt,1500);
+For EACH outcome, output ONE pipe-delimited line (no header):
+StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | Overall | Reasoning
+
+Rules:
+- StudyID = "FirstAuthor Year" extracted from the paper
+- D1-D5 and Overall = EXACTLY one of: Low / Some concerns / High
+- Reasoning = brief 繁體中文 explanation (1 sentence)
+- No markdown, no extra lines
+
+Study text (first 8000 chars):
+${text.substring(0,8000)}`,1800);
         res.trim().split('\n').filter(l=>l.includes('|')&&!l.toLowerCase().includes('studyid')).forEach(line=>{
           const cols=line.split('|').map(s=>s.trim());
-          if(cols.length>=9) S.robResults.rob2.push({...Object.fromEntries(['study','outcome','D1','D2','D3','D4','D5','overall','reason'].map((k,i)=>[k,cols[i]])),tool:'RoB 2.0'});
+          if(cols.length>=9){
+            S.robResults.rob2.push({study:cols[0],outcome:cols[1],D1:cols[2],D2:cols[3],D3:cols[4],D4:cols[5],D5:cols[6],overall:cols[7],reason:cols[8]});
+          }
         });
       } else {
-        const prompt = `You are a ROBINS-I (Risk Of Bias In Non-randomized Studies of Interventions) expert.
-Assess risk of bias for EACH outcome separately (Primary: ${primary}; Secondary: ${secList}).
-For each outcome output ONE pipe-separated line (no header, no extra text):
-StudyID | Outcome | D1(Confounding) | D2(Selection) | D3(Classification) | D4(Deviations) | D5(MissingData) | D6(Measurement) | D7(Reporting) | Overall | Reasoning(繁體中文)
+        const res=await gemini(
+          `You are a ROBINS-I expert. Assess this non-randomized study for EACH outcome.
+Primary outcome: ${primary}
+Secondary outcomes: ${secList}
 
-Each Dx rating must be EXACTLY: Low / Moderate / Serious / Critical / No information
-StudyID format: "FirstAuthor Year"
-Text: ${text.substring(0,8000)}`;
-        const res = await gemini(prompt,1800);
+For EACH outcome, output ONE pipe-delimited line (no header):
+StudyID | Outcome | D1 | D2 | D3 | D4 | D5 | D6 | D7 | Overall | Reasoning
+
+Rules:
+- StudyID = "FirstAuthor Year" extracted from the paper
+- D1-D7 and Overall = EXACTLY one of: Low / Moderate / Serious / Critical / No information
+- Reasoning = brief 繁體中文 explanation (1 sentence)
+- No markdown, no extra lines
+
+Study text:
+${text.substring(0,8000)}`,2000);
         res.trim().split('\n').filter(l=>l.includes('|')&&!l.toLowerCase().includes('studyid')).forEach(line=>{
           const cols=line.split('|').map(s=>s.trim());
-          if(cols.length>=11) S.robResults.robins.push({...Object.fromEntries(['study','outcome','D1','D2','D3','D4','D5','D6','D7','overall','reason'].map((k,i)=>[k,cols[i]])),tool:'ROBINS-I'});
+          if(cols.length>=11){
+            S.robResults.robins.push({study:cols[0],outcome:cols[1],D1:cols[2],D2:cols[3],D3:cols[4],D4:cols[5],D5:cols[6],D6:cols[7],D7:cols[8],overall:cols[9],reason:cols[10]});
+          }
         });
       }
-    } catch(e){ notify(`${f.name} 評讀失敗: ${e.message}`,'warn'); }
+    }catch(e){notify(`${f.name} 失敗: ${e.message}`,'warn');}
   }
 
-  if(S.robResults.rob2.length || S.robResults.robins.length){
-    renderRobResults();
-    notify(`評讀完成：${S.robResults.rob2.length} RCT 筆記錄，${S.robResults.robins.length} Non-RCT 筆記錄`,'success');
-  } else notify('未能生成評讀結果，請確認 PDF 內容','error');
-  btn.disabled=false; sp.style.display='none';
+  if(S.robResults.rob2.length||S.robResults.robins.length){renderRobResults();notify('評讀完成 ✓','success');}
+  else notify('未能生成評讀結果，請確認 PDF 內容','error');
+  btn.disabled=false;sp.style.display='none';
 });
 
-function renderRobTlTable(tableId, rows, domains){
-  const tbl = document.getElementById(tableId);
-  const domainKeys = domains.map(d=>d.key);
-  // header
-  const hdrCols = ['Study','Outcome',...domains.map(d=>`<th class="domain-head">${d.label.replace('\n','<br>')}</th>`),'Reasoning']
-    .map((h,i)=>i>1&&i<2+domains.length?h:`<th>${h}</th>`).join('');
-  tbl.innerHTML=`<thead><tr>${hdrCols}</tr></thead><tbody>${rows.map(row=>{
-    const dCells = domainKeys.map(k=>{ const {cls,sym}=getRobCircle(row[k],''); return `<td><div class="rob-circle ${cls}">${sym}</div></td>`; }).join('');
-    return `<tr><td style="font-weight:600;font-size:13px">${row.study||''}</td><td><span class="badge b-teal" style="font-size:10px">${row.outcome||''}</span></td>${dCells}<td style="font-size:12px;color:var(--text-3)">${row.reason||''}</td></tr>`;
-  }).join('')}</tbody>`;
-}
-
-function renderRobSummaryChart(){
-  const all = [...S.robResults.rob2, ...S.robResults.robins];
-  if(!all.length) return;
-  // For simplicity, show overall risk distribution
-  const studies = [...new Set(all.map(r=>r.study))];
-  const riskMap = {};
-  studies.forEach(s=>{
-    const row=all.find(r=>r.study===s);
-    const ov=(row?.overall||'').toLowerCase();
-    riskMap[s]=ov.includes('low')?'Low':ov.includes('moderate')?'Moderate':ov.includes('serious')?'Serious':ov.includes('critical')?'Critical':ov.includes('high')?'High':'No Info';
-  });
-  const counts={Low:0,Moderate:0,Serious:0,Critical:0,High:0,'No Info':0};
-  Object.values(riskMap).forEach(v=>counts[v]=(counts[v]||0)+1);
-  const labels=Object.keys(counts).filter(k=>counts[k]>0);
-  const vals=labels.map(k=>counts[k]);
-  const colors={Low:'#059669',Moderate:'#f59e0b',Serious:'#ea580c',Critical:'#be123c',High:'#dc2626','No Info':'#9ca3af'};
-  Plotly.react('robSummaryChart',[{
-    type:'bar', x:labels, y:vals, text:vals.map(v=>`${v} studies`),
-    textposition:'outside', marker:{color:labels.map(l=>colors[l])},
-    hovertemplate:'%{x}: %{y} studies<extra></extra>'
-  }],{
-    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
-    xaxis:{title:'Overall Risk',tickfont:{color:'var(--text-2)',size:13},gridcolor:'var(--border)'},
-    yaxis:{title:'Number of Studies',tickfont:{color:'var(--text-3)'},gridcolor:'var(--border)'},
-    margin:{l:50,r:20,t:20,b:50},height:260,
-    font:{family:'DM Sans, sans-serif',color:'var(--text)'}
-  },{responsive:true,displayModeBar:false});
-}
-
-function renderRobDetailTable(){
-  const all=[...S.robResults.rob2.map(r=>({...r,tool:'RoB 2.0'})),...S.robResults.robins.map(r=>({...r,tool:'ROBINS-I'}))];
-  const tbl=document.getElementById('robDetailTable');
-  const cols=['Study','Tool','Outcome','Overall','Reasoning'];
-  tbl.innerHTML=`<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${all.map(r=>{
-    const {cls,sym}=getRobCircle(r.overall,'');
-    return `<tr><td style="font-weight:600">${r.study}</td>
-      <td><span class="badge ${r.tool==='RoB 2.0'?'b-teal':'b-amber'}">${r.tool}</span></td>
-      <td>${r.outcome}</td>
-      <td><div style="display:flex;align-items:center;gap:7px"><div class="rob-circle ${cls}" style="width:24px;height:24px;font-size:11px">${sym}</div>${r.overall}</div></td>
-      <td style="font-size:12px">${r.reason}</td></tr>`;
-  }).join('')}</tbody></table>`;
+function buildRobTbl(tblId,rows,domains){
+  const tbl=document.getElementById(tblId);
+  const hdr='<thead><tr><th>Study</th><th>Outcome</th>'+domains.map(d=>`<th style="min-width:80px">${d}</th>`).join('')+'<th style="min-width:180px">Reasoning</th></tr></thead>';
+  const body='<tbody>'+rows.map(row=>{
+    const keys=Object.keys(row).filter(k=>k.match(/^D\d+$|^overall$/i));
+    const dCells=keys.map(k=>{const{cls,sym}=getRobStyle(row[k]);return`<td><div class="rob-circle ${cls}">${sym}</div></td>`;}).join('');
+    return`<tr><td style="font-weight:600;font-size:13px">${row.study||''}</td><td><span class="badge b-teal" style="font-size:10px">${row.outcome||''}</span></td>${dCells}<td style="font-size:12px;color:var(--text3)">${row.reason||''}</td></tr>`;
+  }).join('')+'</tbody>';
+  tbl.innerHTML=hdr+body;
 }
 
 function renderRobResults(){
-  const has2=S.robResults.rob2.length>0, hasI=S.robResults.robins.length>0;
-  document.getElementById('rob2section').style.display=has2?'block':'none';
-  document.getElementById('robins_section').style.display=hasI?'block':'none';
-  document.getElementById('robDivider').style.display=(has2&&hasI)?'block':'none';
-  if(has2) renderRobTlTable('rob2table',S.robResults.rob2,ROB2_DOMAINS);
-  if(hasI) renderRobTlTable('robinsTable',S.robResults.robins,ROBINS_DOMAINS);
-  renderRobSummaryChart();
-  renderRobDetailTable();
+  const has2=S.robResults.rob2.length>0,hasI=S.robResults.robins.length>0;
+  document.getElementById('rob2sec').style.display=has2?'block':'none';
+  document.getElementById('robinsSec').style.display=hasI?'block':'none';
+  document.getElementById('robDiv').style.display=(has2&&hasI)?'block':'none';
+  if(has2) buildRobTbl('rob2tbl',S.robResults.rob2,ROB2_D);
+  if(hasI) buildRobTbl('robinsTbl',S.robResults.robins,ROBINS_D);
+
+  // Summary chart
+  const all=[...S.robResults.rob2,...S.robResults.robins];
+  const studies=[...new Set(all.map(r=>r.study))];
+  const counts={Low:0,'Some concerns':0,Moderate:0,Serious:0,Critical:0,High:0,'No Info':0};
+  studies.forEach(s=>{
+    const r=all.find(x=>x.study===s);
+    const ov=(r?.overall||'').trim();
+    if(/low/i.test(ov)) counts.Low++;
+    else if(/some/i.test(ov)) counts['Some concerns']++;
+    else if(/moderate/i.test(ov)) counts.Moderate++;
+    else if(/serious/i.test(ov)) counts.Serious++;
+    else if(/critical/i.test(ov)) counts.Critical++;
+    else if(/high/i.test(ov)) counts.High++;
+    else counts['No Info']++;
+  });
+  const labels=Object.keys(counts).filter(k=>counts[k]>0);
+  const clrs={Low:'#059669','Some concerns':'#d97706',Moderate:'#f59e0b',Serious:'#ea580c',Critical:'#be123c',High:'#dc2626','No Info':'#9ca3af'};
+  Plotly.react('robChart',[{type:'bar',x:labels,y:labels.map(l=>counts[l]),marker:{color:labels.map(l=>clrs[l])},
+    hovertemplate:'%{x}: %{y}<extra></extra>'}],
+    {paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+     xaxis:{tickfont:{color:'#44403c',size:13},gridcolor:'#e2dcd4'},
+     yaxis:{title:'N studies',tickfont:{color:'#78716c'},gridcolor:'#e2dcd4'},
+     margin:{l:50,r:20,t:20,b:50},height:240,
+     font:{family:'DM Sans, sans-serif',color:'#44403c'}},
+    {responsive:true,displayModeBar:false});
+
+  // Detail table
+  const allRows=[...S.robResults.rob2.map(r=>({...r,tool:'RoB 2.0'})),...S.robResults.robins.map(r=>({...r,tool:'ROBINS-I'}))];
+  document.getElementById('robDetailWrap').innerHTML='<table><thead><tr><th>Study</th><th>Tool</th><th>Outcome</th><th>Overall</th><th>Reasoning</th></tr></thead><tbody>'+
+    allRows.map(r=>{const{cls,sym}=getRobStyle(r.overall);
+      return`<tr><td style="font-weight:600">${r.study}</td><td><span class="badge ${r.tool==='RoB 2.0'?'b-teal':'b-amber'}">${r.tool}</span></td>
+        <td>${r.outcome}</td><td><div style="display:flex;align-items:center;gap:6px"><div class="rob-circle ${cls}" style="width:22px;height:22px;font-size:11px">${sym}</div>${r.overall}</div></td>
+        <td style="font-size:12px">${r.reason}</td></tr>`;}).join('')+'</tbody></table>';
   document.getElementById('robResults').style.display='block';
 }
 
-// ═══════════════════════════════════════
-// TAB 4: EXTRACTION
-// ═══════════════════════════════════════
+// ── TAB 4: EXTRACTION (FIX 4: better prompts + parsing) ──
 function getOutcomes(){
   const pico=getPico();
   const set=new Set();
-  if(document.getElementById('robPrimary').value.trim()) set.add(document.getElementById('robPrimary').value.trim());
-  if(pico.o1) set.add(pico.o1);
-  const secStr = document.getElementById('robSecondary').value.trim()||pico.o2||'';
-  secStr.split(',').map(s=>s.trim()).filter(s=>s).forEach(s=>set.add(s));
-  return [...set];
+  const p1=$v('robPrimary')||pico.o1;
+  if(p1) set.add(p1);
+  const s2=$v('robSecondary')||pico.o2;
+  if(s2) s2.split(',').map(s=>s.trim()).filter(s=>s).forEach(o=>set.add(o));
+  return[...set];
 }
+
 function renderOutcomeTypes(){
   const outcomes=getOutcomes();
-  const wrap=document.getElementById('outcomeTypeWrap');
-  if(!outcomes.length){
-    wrap.innerHTML='<div class="info-box"><span class="ii">ℹ️</span>請先在 Step 1/3 設定 Outcome。</div>'; return;
-  }
-  wrap.innerHTML=outcomes.map(o=>`<div class="otype-item">
+  const wrap=document.getElementById('outcomeTypes');
+  if(!outcomes.length){wrap.innerHTML='<div class="info-box"><span>ℹ️</span> 請先在 Step 1/3 設定 Outcome。</div>';return;}
+  wrap.innerHTML=outcomes.map(o=>`<div class="otype">
     <label>${o}</label>
-    <select data-o="${o}" class="otype-sel">
+    <select data-o="${encodeURIComponent(o)}" class="otype-sel">
       <option value="Binary" ${(S.outcomeTypes[o]||'Binary')==='Binary'?'selected':''}>Binary</option>
       <option value="Continuous" ${S.outcomeTypes[o]==='Continuous'?'selected':''}>Continuous</option>
     </select></div>`).join('');
   wrap.querySelectorAll('.otype-sel').forEach(sel=>{
-    sel.addEventListener('change',()=>{ S.outcomeTypes[sel.dataset.o]=sel.value; });
-    S.outcomeTypes[sel.dataset.o]=sel.value;
+    sel.addEventListener('change',()=>{S.outcomeTypes[decodeURIComponent(sel.dataset.o)]=sel.value;});
+    S.outcomeTypes[decodeURIComponent(sel.dataset.o)]=sel.value;
   });
 }
-document.getElementById('btnExtract').addEventListener('click', async ()=>{
+
+// FIX 4: extraction with detailed prompts and JSON output
+document.getElementById('btnExtract').addEventListener('click',async()=>{
   const files=S.extFiles.length?S.extFiles:S.robFiles;
   if(!files.length) return notify('請上傳 PDF','warn');
   const outcomes=getOutcomes();
-  const btn=document.getElementById('btnExtract'),sp=document.getElementById('spinExtract');
-  const prog=document.getElementById('extProg'),bar=document.getElementById('extBar'),stat=document.getElementById('extStatus');
-  btn.disabled=true; sp.style.display='inline-block'; prog.style.display='block';
-  const total=files.length*(1+outcomes.length); let done=0;
+  const btn=document.getElementById('btnExtract'),sp=document.getElementById('spExtract');
+  const prog=document.getElementById('extProg'),bar=document.getElementById('extBar'),stat=document.getElementById('extStat');
+  btn.disabled=true;sp.style.display='inline-block';prog.style.display='block';
+  const total=files.length*(1+outcomes.length);let done=0;
 
-  // Char table
+  // Extract characteristics
   const charRows=[];
   for(const f of files){
     stat.textContent=`特徵表：${f.name}`;
     try{
-      const txt=await readPdf(f,5);
-      const res=await gemini(`Extract study characteristics. Return ONE pipe-separated line (no header):
-StudyID (Author Year) | Study Design | N (total) | Intervention | Control | Outcomes Reported
-Text: ${txt.substring(0,7000)}`,400);
-      const line=res.trim().split('\n').find(l=>l.includes('|'));
-      if(line) charRows.push(line.split('|').map(s=>s.trim()));
-    }catch(e){ notify(`特徵表 ${f.name} 失敗`,'warn'); }
-    done++; bar.style.width=`${done/total*100}%`;
-  }
-  if(charRows.length){ S.charTable=charRows; }
+      const txt=await readPdf(f,6);
+      const res=await gemini(
+        `Extract study characteristics from this paper. Return EXACTLY ONE pipe-delimited line with these 6 fields:
+"Author Year" | "Study Design (e.g. RCT, Retrospective cohort)" | "Total N" | "Intervention description" | "Control/Comparison description" | "Outcomes reported"
 
-  // Outcome datasets
+Rules:
+- If a field is not found, write NA
+- No header, no extra lines, no markdown
+- Use the actual author and year from the paper for field 1
+
+Paper text:
+${txt.substring(0,10000)}`,500);
+      // Find the pipe-delimited line
+      const lines=res.trim().split('\n').filter(l=>l.includes('|'));
+      if(lines.length>0){
+        const cols=lines[0].split('|').map(s=>s.trim().replace(/^"|"$/g,''));
+        // Pad if needed
+        while(cols.length<6) cols.push('NA');
+        charRows.push(cols.slice(0,6));
+      }
+    }catch(e){notify(`特徵表 ${f.name} 失敗: ${e.message}`,'warn');}
+    done++;bar.style.width=`${done/total*100}%`;
+  }
+  if(charRows.length) S.charTable=charRows;
+
+  // Extract outcome datasets
   S.extractedDS={};
   for(const out of outcomes){
     const dtype=S.outcomeTypes[out]||'Binary';
-    const rows=[];
+    const outRows=[];
     for(const f of files){
       stat.textContent=`萃取 "${out}"：${f.name}`;
       try{
         const txt=await readPdf(f);
-        const isBin=dtype==='Binary';
-        const fmt=isBin
-          ?'StudyID | Population | Tx Details | Ctrl Details | Tx Events | Tx Total | Ctrl Events | Ctrl Total'
-          :'StudyID | Population | Tx Details | Ctrl Details | Tx Mean | Tx SD | Tx Total | Ctrl Mean | Ctrl SD | Ctrl Total';
-        const schema=isBin
-          ?['Study ID','Population','Tx Details','Ctrl Details','Tx Events','Tx Total','Ctrl Events','Ctrl Total']
-          :['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
-        const res=await gemini(`Extract data for outcome "${out}" (${dtype}). Format:\n${fmt}\nData rows only, no header. StudyID = "Author Year".\nText: ${txt.substring(0,18000)}`,600);
-        res.trim().split('\n').filter(l=>l.includes('|')&&!l.toLowerCase().includes('studyid')).forEach(line=>{
-          const cols=line.split('|').map(s=>s.trim());
-          if(cols.length===schema.length) rows.push(Object.fromEntries(schema.map((k,i)=>[k,cols[i]])));
+        let prompt;
+        if(dtype==='Binary'){
+          prompt=`Extract binary outcome data for "${out}" from this paper.
+Return EXACTLY ONE pipe-delimited data line:
+"Author Year" | "Population description" | "Intervention arm details" | "Control arm details" | "Tx Events (number)" | "Tx Total (number)" | "Ctrl Events (number)" | "Ctrl Total (number)"
+
+Rules:
+- StudyID must be "FirstAuthor Year" from the actual paper (e.g., "Smith 2020")
+- Events and Total must be plain numbers (e.g., 45, 100)
+- If data not found, return the word: NOT_FOUND
+- No header, no markdown, just one data line
+
+Paper text:
+${txt.substring(0,22000)}`;
+        } else {
+          prompt=`Extract continuous outcome data for "${out}" from this paper.
+Return EXACTLY ONE pipe-delimited data line:
+"Author Year" | "Population description" | "Intervention arm details" | "Control arm details" | "Tx Mean" | "Tx SD" | "Tx N" | "Ctrl Mean" | "Ctrl SD" | "Ctrl N"
+
+Rules:
+- StudyID must be "FirstAuthor Year" from the actual paper (e.g., "Smith 2020")
+- Mean, SD, N must be plain numbers
+- If data not found, return the word: NOT_FOUND
+- No header, no markdown, just one data line
+
+Paper text:
+${txt.substring(0,22000)}`;
+        }
+        const res=await gemini(prompt,500);
+        if(res.trim().toUpperCase().includes('NOT_FOUND')){done++;bar.style.width=`${done/total*100}%`;continue;}
+        const lines=res.trim().split('\n').filter(l=>l.includes('|'));
+        lines.forEach(line=>{
+          const cols=line.split('|').map(s=>s.trim().replace(/^"|"$/g,''));
+          const schema=dtype==='Binary'
+            ?['Study ID','Population','Tx Details','Ctrl Details','Tx Events','Tx Total','Ctrl Events','Ctrl Total']
+            :['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
+          if(cols.length>=schema.length){
+            const row={};schema.forEach((k,i)=>{row[k]=cols[i]||'';});
+            // Validate: at least Study ID and one number field must be non-empty
+            const hasId=row['Study ID']&&row['Study ID']!=='NA';
+            const numFields=dtype==='Binary'?['Tx Events','Tx Total','Ctrl Events','Ctrl Total']:['Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
+            const hasNums=numFields.some(k=>row[k]&&/\d/.test(row[k]));
+            if(hasId&&hasNums) outRows.push(row);
+          }
         });
-        if(rows.length>0 && !rows.find(r=>r['Study ID'])) rows.forEach((r,i)=>{ if(!r['Study ID']) r['Study ID']=f.name.replace('.pdf',''); });
-      }catch(e){ notify(`萃取 ${out}/${f.name} 失敗`,'warn'); }
-      done++; bar.style.width=`${done/total*100}%`;
+      }catch(e){notify(`萃取失敗 ${out}/${f.name}: ${e.message}`,'warn');}
+      done++;bar.style.width=`${done/total*100}%`;
     }
-    if(rows.length) S.extractedDS[out]={rows,dtype,schema:dtype==='Binary'
+    const schema=dtype==='Binary'
       ?['Study ID','Population','Tx Details','Ctrl Details','Tx Events','Tx Total','Ctrl Events','Ctrl Total']
-      :['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total']};
+      :['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
+    S.extractedDS[out]={rows:outRows,dtype,schema};
   }
 
   renderExtractResults();
   stat.textContent='完成！';
-  btn.disabled=false; sp.style.display='none';
-  notify('萃取完成 ✓','success');
+  btn.disabled=false;sp.style.display='none';
+  notify(`萃取完成 ✓`,'success');
 });
 
 function renderExtractResults(){
   const el=document.getElementById('extractResults');
   let html='';
-  // Char table
   if(S.charTable?.length){
     const sch=['Study','Design','N','Intervention','Control','Outcomes'];
-    html+=`<div class="card"><div class="card-head"><div class="card-icon ci-teal">📋</div>
-      <div class="card-head-text"><h2>Table 1 — Characteristics of Included Studies</h2></div>
+    html+=`<div class="card"><div class="card-head"><div class="ci ci-teal">📋</div>
+      <div class="cht"><h2>Table 1 — Characteristics of Included Studies</h2></div>
       <div style="margin-left:auto"><button class="btn btn-ghost btn-sm" onclick="dlChar()">📥 下載 CSV</button></div></div>
-      <div class="table-wrap"><table><thead><tr>${sch.map(s=>`<th>${s}</th>`).join('')}</tr></thead><tbody>
-      ${S.charTable.map(r=>`<tr>${sch.map((_,i)=>`<td><input value="${(r[i]||'').replace(/"/g,'&quot;')}"></td>`).join('')}</tr>`).join('')}
+      <div class="tbl-wrap"><table><thead><tr>${sch.map(s=>`<th>${s}</th>`).join('')}</tr></thead><tbody>
+      ${S.charTable.map(r=>`<tr>${sch.map((_,i)=>`<td><input value="${esc(r[i]||'')}"></td>`).join('')}</tr>`).join('')}
       </tbody></table></div></div>`;
   }
-  // Outcome tables
   Object.entries(S.extractedDS).forEach(([out,{rows,dtype,schema}])=>{
-    const safeId=out.replace(/\W+/g,'_');
-    html+=`<div class="card"><div class="card-head"><div class="card-icon ci-teal">📊</div>
-      <div class="card-head-text"><h2>${out}</h2><p style="font-size:12px">${dtype} · ${rows.length} studies</p></div>
-      <div style="margin-left:auto"><button class="btn btn-ghost btn-sm" onclick="dlOutcome('${out}')">📥 下載 CSV</button></div></div>
-      <div class="table-wrap"><table><thead><tr>${schema.map(s=>`<th>${s}</th>`).join('')}</tr></thead><tbody>
-      ${rows.map(r=>`<tr>${schema.map(k=>`<td><input value="${(r[k]||'').replace(/"/g,'&quot;')}" data-k="${k}"></td>`).join('')}</tr>`).join('')}
-      </tbody></table></div></div>`;
+    html+=`<div class="card"><div class="card-head"><div class="ci ci-teal">📊</div>
+      <div class="cht"><h2>${out}</h2><p style="font-size:12px">${dtype} · ${rows.length} studies found</p></div>
+      <div style="margin-left:auto;display:flex;gap:7px">
+        <button class="btn btn-ghost btn-sm" onclick="addRow('${encodeURIComponent(out)}')">+ 新增行</button>
+        <button class="btn btn-ghost btn-sm" onclick="dlOutcome('${encodeURIComponent(out)}')">📥 下載 CSV</button>
+      </div></div>
+      <div class="tbl-wrap" id="tbl_${encodeURIComponent(out)}"><table><thead><tr>${schema.map(s=>`<th>${s}</th>`).join('')}</tr></thead><tbody>
+      ${rows.length?rows.map((r,ri)=>`<tr>${schema.map(k=>`<td><input value="${esc(r[k]||'')}" data-out="${encodeURIComponent(out)}" data-k="${k}" data-ri="${ri}"></td>`).join('')}</tr>`).join('')
+        :'<tr><td colspan="'+schema.length+'" style="text-align:center;color:var(--text3);padding:20px">AI 未從 PDF 中萃取到數據，請手動輸入或下載空白 CSV 填寫</td></tr>'}
+      </tbody></table></div>
+    </div>`;
   });
-  el.innerHTML=html||'';
+  el.innerHTML=html||'<div class="card" style="text-align:center;color:var(--text3);padding:30px">尚無萃取結果</div>';
+  // Wire up inline editing
+  el.querySelectorAll('td input[data-out]').forEach(inp=>{
+    inp.addEventListener('input',()=>{
+      const out=decodeURIComponent(inp.dataset.out);
+      const ri=+inp.dataset.ri;
+      if(S.extractedDS[out]?.rows[ri]) S.extractedDS[out].rows[ri][inp.dataset.k]=inp.value;
+    });
+  });
 }
-window.dlChar=()=>{
-  if(!S.charTable) return;
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+window.addRow=function(encOut){
+  const out=decodeURIComponent(encOut);
+  const ds=S.extractedDS[out];if(!ds)return;
+  const empty={};ds.schema.forEach(k=>empty[k]='');
+  ds.rows.push(empty);renderExtractResults();
+};
+window.dlChar=function(){
+  if(!S.charTable)return;
   const sch=['Study','Design','N','Intervention','Control','Outcomes'];
-  const csv=[sch.join(','),...S.charTable.map(r=>sch.map((_,i)=>`"${(r[i]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+  const csv=[sch.join(','),...S.charTable.map(r=>sch.map((_,i)=>csv_cell(r[i]||'')).join(','))].join('\n');
   dlCSV(csv,'characteristics_table.csv');
 };
-window.dlOutcome=(out)=>{
-  const ds=S.extractedDS[out]; if(!ds) return;
-  const csv=[ds.schema.join(','),...ds.rows.map(r=>ds.schema.map(k=>`"${(r[k]||'').replace(/"/g,'""')}"`).join(','))].join('\n');
+window.dlOutcome=function(encOut){
+  const out=decodeURIComponent(encOut);
+  const ds=S.extractedDS[out];if(!ds)return;
+  // Read current values from inputs
+  const tbl=document.getElementById('tbl_'+encOut);
+  if(tbl){
+    tbl.querySelectorAll('tr[data-ri]').forEach(tr=>{});
+  }
+  const csv=[ds.schema.join(','),...ds.rows.map(r=>ds.schema.map(k=>csv_cell(r[k]||'')).join(','))].join('\n');
   dlCSV(csv,out.replace(/\s+/g,'_')+'.csv');
 };
+function csv_cell(v){return`"${String(v).replace(/"/g,'""')}"`;}
 function dlCSV(csv,name){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
-  a.download=name; a.click();
+  a.download=name;a.click();
 }
 
-// ═══════════════════════════════════════
-// META-ANALYSIS ENGINE
-// ═══════════════════════════════════════
-function logGamma(x){
-  if(x<0.5) return Math.log(Math.PI/Math.sin(Math.PI*x))-logGamma(1-x);
-  x-=1; let a=0.99999999999980993;
-  const c=[676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,
-    12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
-  c.forEach((v,i)=>a+=v/(x+i+1));
-  const t=x+7.5;
-  return 0.5*Math.log(2*Math.PI)+(x+0.5)*Math.log(t)-t+Math.log(a);
+// ── STATS ENGINE (FIX 6: robust chi2, real colors) ──
+// Regularized incomplete gamma via continued fraction (Numerical Recipes)
+function gammaln(x){
+  const cof=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];
+  let y=x,tmp=x+5.5;tmp-=(x+0.5)*Math.log(tmp);
+  let ser=1.000000000190015;
+  cof.forEach((c,j)=>{ser+=c/(y+j+1);});
+  return -tmp+Math.log(2.5066282746310005*ser/x);
 }
-function chi2cdf(x,k){
-  if(x<=0) return 0;
-  // regularized incomplete gamma
-  const a=k/2, xx=x/2;
-  if(xx===0) return 0;
-  // series expansion
-  let term=1/a, sum=term;
-  for(let n=1;n<200;n++){ term*=xx/(a+n); sum+=term; if(Math.abs(term)<1e-10*Math.abs(sum)) break; }
-  return Math.min(1, sum*Math.exp(-xx+a*Math.log(xx)-logGamma(a)));
+function incompleteGamma(a,x){
+  if(x<0) return 0;
+  if(x===0) return 0;
+  if(x<(a+1)){
+    // Series representation
+    let ap=a,del=1/a,sum=del;
+    for(let n=0;n<200;n++){ap++;del*=x/ap;sum+=del;if(Math.abs(del)<Math.abs(sum)*1e-9)break;}
+    return sum*Math.exp(-x+a*Math.log(x)-gammaln(a));
+  } else {
+    // Continued fraction
+    let b=x+1-a,c=1e300,d=1/b,h=d;
+    for(let i=1;i<=200;i++){
+      const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-300)d=1e-300;
+      c=b+an/c;if(Math.abs(c)<1e-300)c=1e-300;d=1/d;const del=d*c;h*=del;
+      if(Math.abs(del-1)<1e-9)break;
+    }
+    return 1-h*Math.exp(-x+a*Math.log(x)-gammaln(a));
+  }
+}
+function chi2pval(Q,df){
+  if(Q<=0||df<=0) return 1;
+  return 1-incompleteGamma(df/2,Q/2);
 }
 
-class MetaEngine {
-  constructor(rows, dtype){
-    this.dtype=dtype; this.df=[]; this.results={}; this.influence=[];
+class MetaEngine{
+  constructor(rows,dtype){
+    this.dtype=dtype;this.df=[];this.res={};this.infl=[];
     this.measure=dtype==='Binary'?'RR':'SMD';
     this.effectLabel=dtype==='Binary'?'Risk Ratio':'Std. Mean Difference';
-    try{
-      this._calc(rows);
-      if(this.df.length>1) this._re();
-      if(this.df.length>=3) this._influence();
-    }catch(e){ console.error(e); }
+    try{this._calc(rows);if(this.df.length>1)this._re();if(this.df.length>=3)this._influence();}
+    catch(e){console.error('MetaEngine:',e);}
   }
-  _n(v){ const x=parseFloat(String(v).replace(/,/g,'')); return isNaN(x)?null:x; }
+  _n(v){const x=parseFloat(String(v).replace(/[, ]/g,''));return isNaN(x)?null:x;}
   _calc(rows){
     if(this.dtype==='Binary'){
-      this.df=rows.filter(r=>['Tx Events','Tx Total','Ctrl Events','Ctrl Total'].every(k=>this._n(r[k])!==null)&&this._n(r['Tx Total'])>0&&this._n(r['Ctrl Total'])>0)
-        .map(r=>{
-          const a=this._n(r['Tx Events'])+0.5,n1=this._n(r['Tx Total'])+0.5;
-          const c=this._n(r['Ctrl Events'])+0.5,n2=this._n(r['Ctrl Total'])+0.5;
-          const TE=Math.log((a/n1)/(c/n2));
-          const seTE=Math.sqrt(1/a-1/n1+1/c-1/n2);
-          return {...r,TE,seTE,lower:TE-1.96*seTE,upper:TE+1.96*seTE};
-        });
+      this.df=rows.filter(r=>{
+        const [a,n1,c,n2]=['Tx Events','Tx Total','Ctrl Events','Ctrl Total'].map(k=>this._n(r[k]));
+        return a!==null&&n1!==null&&c!==null&&n2!==null&&n1>0&&n2>0;
+      }).map(r=>{
+        const a=this._n(r['Tx Events'])+0.5,n1=this._n(r['Tx Total'])+0.5;
+        const c=this._n(r['Ctrl Events'])+0.5,n2=this._n(r['Ctrl Total'])+0.5;
+        const TE=Math.log((a/n1)/(c/n2));
+        const seTE=Math.sqrt(1/a-1/n1+1/c-1/n2);
+        return{...r,TE,seTE,lower:TE-1.96*seTE,upper:TE+1.96*seTE};
+      });
     } else {
-      this.df=rows.filter(r=>['Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'].every(k=>this._n(r[k])!==null)&&this._n(r['Tx Total'])>0&&this._n(r['Ctrl Total'])>0)
-        .map(r=>{
-          const n1=this._n(r['Tx Total']),n2=this._n(r['Ctrl Total']);
-          const m1=this._n(r['Tx Mean']),m2=this._n(r['Ctrl Mean']);
-          const s1=this._n(r['Tx SD']),s2=this._n(r['Ctrl SD']);
-          const sp=Math.sqrt(((n1-1)*s1**2+(n2-1)*s2**2)/(n1+n2-2));
-          const TE=(m1-m2)/sp;
-          const seTE=Math.sqrt((n1+n2)/(n1*n2)+TE**2/(2*(n1+n2)));
-          return {...r,TE,seTE,lower:TE-1.96*seTE,upper:TE+1.96*seTE};
-        });
+      this.df=rows.filter(r=>{
+        const vals=['Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'].map(k=>this._n(r[k]));
+        return vals.every(v=>v!==null)&&this._n(r['Tx Total'])>0&&this._n(r['Ctrl Total'])>0;
+      }).map(r=>{
+        const n1=this._n(r['Tx Total']),n2=this._n(r['Ctrl Total']);
+        const m1=this._n(r['Tx Mean']),m2=this._n(r['Ctrl Mean']);
+        const s1=this._n(r['Tx SD']),s2=this._n(r['Ctrl SD']);
+        const sp=Math.sqrt(((n1-1)*s1**2+(n2-1)*s2**2)/(n1+n2-2));
+        const TE=(m1-m2)/sp;
+        const seTE=Math.sqrt((n1+n2)/(n1*n2)+TE**2/(2*(n1+n2)));
+        return{...r,TE,seTE,lower:TE-1.96*seTE,upper:TE+1.96*seTE};
+      });
     }
   }
   _re(){
     const k=this.df.length;
     const wF=this.df.map(r=>1/r.seTE**2);
     const sumW=wF.reduce((a,b)=>a+b,0);
-    const teF=this.df.reduce((acc,r,i)=>acc+wF[i]*r.TE,0)/sumW;
-    const Q=this.df.reduce((acc,r,i)=>acc+wF[i]*(r.TE-teF)**2,0);
-    const C=sumW-wF.reduce((acc,w)=>acc+w**2,0)/sumW;
-    const tau2=Math.max(0,(Q-(k-1))/C);
+    const teF=this.df.reduce((s,r,i)=>s+wF[i]*r.TE,0)/sumW;
+    const Q=this.df.reduce((s,r,i)=>s+wF[i]*(r.TE-teF)**2,0);
+    const C=sumW-wF.reduce((s,w)=>s+w**2,0)/sumW;
+    const tau2=Math.max(0,(Q-(k-1))/(C||1));
     const I2=Q>0?Math.max(0,(Q-(k-1))/Q)*100:0;
     const wR=this.df.map(r=>1/(r.seTE**2+tau2));
     const sumWR=wR.reduce((a,b)=>a+b,0);
-    const teR=this.df.reduce((acc,r,i)=>acc+wR[i]*r.TE,0)/sumWR;
+    const teR=this.df.reduce((s,r,i)=>s+wR[i]*r.TE,0)/sumWR;
     const seR=Math.sqrt(1/sumWR);
-    const pQ=1-chi2cdf(Q,k-1);
-    this.results={TE_pooled:teR,seTE_pooled:seR,lower_pooled:teR-1.96*seR,upper_pooled:teR+1.96*seR,tau2,Q,I2,p_Q:pQ};
+    this.res={TE_pooled:teR,seTE_pooled:seR,lower_pooled:teR-1.96*seR,upper_pooled:teR+1.96*seR,
+      tau2,Q,I2,p_Q:chi2pval(Q,k-1)};
     this.df=this.df.map((r,i)=>({...r,weight:(wR[i]/sumWR)*100}));
   }
   _influence(){
-    const k=this.df.length,res=this.results;
-    this.influence=this.df.map((row,idx)=>{
+    const k=this.df.length,res=this.res;
+    this.infl=this.df.map((row,idx)=>{
       try{
         const sub=this.df.filter((_,i)=>i!==idx);
         const wF=sub.map(r=>1/r.seTE**2);
         const sumW=wF.reduce((a,b)=>a+b,0);
-        const teF=sub.reduce((acc,r,i)=>acc+wF[i]*r.TE,0)/sumW;
-        const Q=sub.reduce((acc,r,i)=>acc+wF[i]*(r.TE-teF)**2,0);
-        const C=sumW-wF.reduce((acc,w)=>acc+w**2,0)/sumW;
-        const tau2=Math.max(0,(Q-(k-2))/C);
+        const teF=sub.reduce((s,r,i)=>s+wF[i]*r.TE,0)/sumW;
+        const Q=sub.reduce((s,r,i)=>s+wF[i]*(r.TE-teF)**2,0);
+        const C=sumW-wF.reduce((s,w)=>s+w**2,0)/sumW;
+        const tau2=Math.max(0,(Q-(k-2))/(C||1));
         const wR=sub.map(r=>1/(r.seTE**2+tau2));
         const sumWR=wR.reduce((a,b)=>a+b,0);
-        const teDel=sub.reduce((acc,r,i)=>acc+wR[i]*r.TE,0)/sumWR;
+        const teDel=sub.reduce((s,r,i)=>s+wR[i]*r.TE,0)/sumWR;
         const seDel=Math.sqrt(1/sumWR);
         const hat=row.weight/100;
         const rstud=(row.TE-res.TE_pooled)/Math.sqrt(row.seTE**2+res.tau2);
-        return {study:row['Study ID']||`Study ${idx+1}`,TE:row.TE,rstudent:rstud,
+        return{study:row['Study ID']||`Study ${idx+1}`,TE:row.TE,rstudent:rstud,
           dffits:hat<1?Math.sqrt(hat/(1-hat))*rstud:0,cookD:hat<1?(rstud**2*hat)/(1-hat):0,
-          covR:seDel**2/res.seTE_pooled**2,tau2del:tau2,hat,weight:row.weight,
+          covR:seDel**2/(res.seTE_pooled**2||1),tau2del:tau2,hat,weight:row.weight,
           teDel,lDel:teDel-1.96*seDel,uDel:teDel+1.96*seDel};
-      }catch{ return null; }
+      }catch{return null;}
     }).filter(Boolean);
   }
 }
 
-// ═══════════════════════════════════════
-// CHART RENDERERS
-// ═══════════════════════════════════════
-const PLOTLY_LAYOUT = {
-  paper_bgcolor:'transparent', plot_bgcolor:'transparent',
-  font:{family:'DM Sans, sans-serif', color:'var(--text-2)'},
-  hoverlabel:{bgcolor:'white',bordercolor:'var(--border)',font:{color:'var(--text)'}},
-};
+// ── CHARTS (FIX 6: use hex colors, not CSS vars) ──
+const PL={paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+  font:{family:'DM Sans, sans-serif',color:'#44403c'},
+  hoverlabel:{bgcolor:'#ffffff',bordercolor:'#e2dcd4',font:{color:'#1c1917'}}};
 
 function renderForest(ma){
-  const df=ma.df,res=ma.results,isBin=ma.dtype==='Binary';
+  const df=ma.df,res=ma.res,isBin=ma.dtype==='Binary';
   const xf=v=>isBin?Math.exp(v):v;
   const n=df.length;
   const ys=df.map((_,i)=>n-i);
   const vals=df.map(r=>xf(r.TE)),lows=df.map(r=>xf(r.lower)),highs=df.map(r=>xf(r.upper));
   const pVal=xf(res.TE_pooled),pLow=xf(res.lower_pooled),pHigh=xf(res.upper_pooled);
   const center=isBin?1:0;
-
-  const traces=[
-    { type:'scatter',x:vals,y:ys,mode:'markers',
-      marker:{symbol:'square',size:df.map(r=>Math.max(8,Math.min(19,r.weight*0.7))),
-        color:'#0891b2',opacity:0.85,line:{color:'#1c2b45',width:0.5}},
-      error_x:{type:'data',symmetric:false,array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),
-        color:'#64a8c8',thickness:2,width:5},
-      hovertemplate:df.map((r,i)=>
-        `<b>${r['Study ID']||''}</b><br>${ma.measure}: ${vals[i].toFixed(3)}<br>95% CI: [${lows[i].toFixed(3)}, ${highs[i].toFixed(3)}]<br>Weight: ${(r.weight||0).toFixed(1)}%<extra></extra>`),
-      showlegend:false },
-    { type:'scatter',x:[pVal],y:[0],mode:'markers',
-      marker:{symbol:'diamond',size:22,color:'#c2710a',line:{color:'#fff',width:1.5}},
-      error_x:{type:'data',symmetric:false,array:[pHigh-pVal],arrayminus:[pVal-pLow],color:'#c2710a',thickness:2.5,width:8},
-      hovertemplate:`<b>Pooled</b><br>${ma.measure}: ${pVal.toFixed(3)}<br>[${pLow.toFixed(3)}, ${pHigh.toFixed(3)}]<extra></extra>`,showlegend:false }
-  ];
-
-  const annots=[];
-  const hy=n+0.9;
-  annots.push(
-    {x:.02,y:hy,xref:'paper',yref:'y',text:'<b>Study</b>',showarrow:false,font:{color:'var(--text-3)',size:12},xanchor:'left'},
-    {x:.72,y:hy,xref:'paper',yref:'y',text:`<b>${ma.measure}</b>`,showarrow:false,font:{color:'var(--text-3)',size:12},xanchor:'center'},
-    {x:.86,y:hy,xref:'paper',yref:'y',text:'<b>95% CI</b>',showarrow:false,font:{color:'var(--text-3)',size:12},xanchor:'center'},
-    {x:.99,y:hy,xref:'paper',yref:'y',text:'<b>Weight</b>',showarrow:false,font:{color:'var(--text-3)',size:12},xanchor:'right'}
-  );
-  df.forEach((r,i)=>{
-    const y=ys[i],sid=r['Study ID']||`Study ${i+1}`;
-    annots.push(
-      {x:.02,y,xref:'paper',yref:'y',text:sid,showarrow:false,font:{color:'var(--text)',size:12},xanchor:'left'},
-      {x:.72,y,xref:'paper',yref:'y',text:vals[i].toFixed(3),showarrow:false,font:{color:'var(--text)',size:12},xanchor:'center'},
-      {x:.86,y,xref:'paper',yref:'y',text:`[${lows[i].toFixed(2)}, ${highs[i].toFixed(2)}]`,showarrow:false,font:{color:'var(--text)',size:12},xanchor:'center'},
-      {x:.99,y,xref:'paper',yref:'y',text:`${(r.weight||0).toFixed(1)}%`,showarrow:false,font:{color:'var(--text-3)',size:12},xanchor:'right'}
-    );
-  });
-  annots.push(
-    {x:.02,y:0,xref:'paper',yref:'y',text:'<b>Pooled (RE Model)</b>',showarrow:false,font:{color:'#c2710a',size:13},xanchor:'left'},
+  const annots=[
+    {x:.02,y:n+.9,xref:'paper',yref:'y',text:'<b>Study</b>',showarrow:false,font:{color:'#78716c',size:12},xanchor:'left'},
+    {x:.72,y:n+.9,xref:'paper',yref:'y',text:`<b>${ma.measure}</b>`,showarrow:false,font:{color:'#78716c',size:12},xanchor:'center'},
+    {x:.86,y:n+.9,xref:'paper',yref:'y',text:'<b>95% CI</b>',showarrow:false,font:{color:'#78716c',size:12},xanchor:'center'},
+    {x:.99,y:n+.9,xref:'paper',yref:'y',text:'<b>Weight</b>',showarrow:false,font:{color:'#78716c',size:12},xanchor:'right'},
+    {x:.02,y:0,xref:'paper',yref:'y',text:'<b>Pooled (RE)</b>',showarrow:false,font:{color:'#c2710a',size:13},xanchor:'left'},
     {x:.72,y:0,xref:'paper',yref:'y',text:`<b>${pVal.toFixed(3)}</b>`,showarrow:false,font:{color:'#c2710a',size:13},xanchor:'center'},
     {x:.86,y:0,xref:'paper',yref:'y',text:`<b>[${pLow.toFixed(2)}, ${pHigh.toFixed(2)}]</b>`,showarrow:false,font:{color:'#c2710a',size:13},xanchor:'center'},
     {x:.99,y:0,xref:'paper',yref:'y',text:'<b>100.0%</b>',showarrow:false,font:{color:'#c2710a',size:13},xanchor:'right'},
-    {x:.02,y:-0.8,xref:'paper',yref:'y',
-      text:`Heterogeneity: I² = ${res.I2.toFixed(1)}%   τ² = ${res.tau2.toFixed(3)}   Q p-value = ${res.p_Q.toFixed(4)}`,
-      showarrow:false,font:{color:'var(--text-3)',size:11},xanchor:'left'}
-  );
-  Plotly.react('forestPlot',traces,{
-    ...PLOTLY_LAYOUT,
-    xaxis:{type:isBin?'log':'linear',domain:[.28,.70],gridcolor:'var(--border)',tickfont:{color:'var(--text-3)',size:11},
-      title:{text:`← Favours Tx   ${ma.measure}   Favours Ctrl →`,font:{color:'var(--text-3)',size:11}},showline:true,linecolor:'var(--border)',zeroline:false},
-    yaxis:{range:[-1.5,n+1.5],showticklabels:false,showgrid:false,zeroline:false},
+    {x:.02,y:-.85,xref:'paper',yref:'y',
+      text:`Heterogeneity: I²=${res.I2.toFixed(1)}%   τ²=${res.tau2.toFixed(4)}   Q p=${res.p_Q.toFixed(4)}`,
+      showarrow:false,font:{color:'#78716c',size:11},xanchor:'left'},
+  ];
+  df.forEach((r,i)=>{
+    const y=ys[i],sid=r['Study ID']||`Study ${i+1}`;
+    annots.push(
+      {x:.02,y,xref:'paper',yref:'y',text:sid,showarrow:false,font:{color:'#1c1917',size:12},xanchor:'left'},
+      {x:.72,y,xref:'paper',yref:'y',text:vals[i].toFixed(3),showarrow:false,font:{color:'#1c1917',size:12},xanchor:'center'},
+      {x:.86,y,xref:'paper',yref:'y',text:`[${lows[i].toFixed(2)}, ${highs[i].toFixed(2)}]`,showarrow:false,font:{color:'#1c1917',size:12},xanchor:'center'},
+      {x:.99,y,xref:'paper',yref:'y',text:`${(r.weight||0).toFixed(1)}%`,showarrow:false,font:{color:'#78716c',size:12},xanchor:'right'}
+    );
+  });
+  const traces=[
+    {type:'scatter',x:vals,y:ys,mode:'markers',
+     marker:{symbol:'square',size:df.map(r=>Math.max(8,Math.min(20,r.weight*.75))),color:'#0891b2',opacity:.85,line:{color:'#1c2b45',width:.5}},
+     error_x:{type:'data',symmetric:false,array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),color:'#64a8c8',thickness:2,width:5},
+     hovertemplate:df.map((r,i)=>`<b>${r['Study ID']||''}</b><br>${ma.measure}: ${vals[i].toFixed(3)}<br>95%CI: [${lows[i].toFixed(3)}, ${highs[i].toFixed(3)}]<br>Weight: ${(r.weight||0).toFixed(1)}%<extra></extra>`),showlegend:false},
+    {type:'scatter',x:[pVal],y:[0],mode:'markers',
+     marker:{symbol:'diamond',size:22,color:'#c2710a',line:{color:'#fff',width:1.5}},
+     error_x:{type:'data',symmetric:false,array:[pHigh-pVal],arrayminus:[pVal-pLow],color:'#c2710a',thickness:2.5,width:8},
+     hovertemplate:`<b>Pooled</b><br>${ma.measure}: ${pVal.toFixed(3)}<br>[${pLow.toFixed(3)}, ${pHigh.toFixed(3)}]<extra></extra>`,showlegend:false}
+  ];
+  Plotly.react('forestPlot',traces,{...PL,
+    xaxis:{type:isBin?'log':'linear',domain:[.28,.70],gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:11},
+      title:{text:`← Favours Tx   ${ma.measure}   Favours Ctrl →`,font:{color:'#78716c',size:11}},showline:true,linecolor:'#e2dcd4',zeroline:false},
+    yaxis:{range:[-1.6,n+1.5],showticklabels:false,showgrid:false,zeroline:false},
     shapes:[
-      {type:'line',x0:center,x1:center,y0:-1,y1:n+.5,xref:'x',yref:'y',line:{color:'var(--border2)',dash:'dot',width:1.5}},
-      {type:'line',x0:0,x1:1,y0:n+.3,y1:n+.3,xref:'paper',yref:'y',line:{color:'var(--border)',width:1}},
-      {type:'line',x0:0,x1:1,y0:.35,y1:.35,xref:'paper',yref:'y',line:{color:'var(--border)',width:1}}
+      {type:'line',x0:center,x1:center,y0:-1,y1:n+.4,xref:'x',yref:'y',line:{color:'#d4cec6',dash:'dot',width:1.5}},
+      {type:'line',x0:0,x1:1,y0:n+.3,y1:n+.3,xref:'paper',yref:'y',line:{color:'#e2dcd4',width:1}},
+      {type:'line',x0:0,x1:1,y0:.35,y1:.35,xref:'paper',yref:'y',line:{color:'#e2dcd4',width:1}},
     ],
-    annotations:annots,
-    margin:{l:10,r:10,t:40,b:70},
-    height:Math.max(320,n*44+130),
-    dragmode:false
-  },{responsive:true,displayModeBar:false});
+    annotations:annots,margin:{l:10,r:10,t:40,b:70},height:Math.max(320,n*44+130),dragmode:false},
+    {responsive:true,displayModeBar:false});
 }
 
 function renderFunnel(ma){
-  const df=ma.df,res=ma.results;
+  const df=ma.df,res=ma.res;
   const maxSE=Math.max(...df.map(r=>r.seTE))*1.1;
   Plotly.react('funnelPlot',[
     {type:'scatter',x:df.map(r=>r.TE),y:df.map(r=>r.seTE),mode:'markers',text:df.map(r=>r['Study ID']||''),
-      marker:{color:'#0891b2',size:10,opacity:0.8,line:{color:'white',width:1}},
-      hovertemplate:'<b>%{text}</b><br>TE: %{x:.3f}<br>SE: %{y:.3f}<extra></extra>'},
-    {type:'scatter',x:[res.TE_pooled,res.TE_pooled],y:[0,maxSE],mode:'lines',
-      line:{color:'#c2710a',dash:'dash',width:1.8},showlegend:false,hoverinfo:'skip'},
-    {type:'scatter',x:[res.TE_pooled-1.96*maxSE,res.TE_pooled,res.TE_pooled+1.96*maxSE,res.TE_pooled-1.96*maxSE],
-      y:[maxSE,0,maxSE,maxSE],fill:'toself',fillcolor:'rgba(8,145,178,0.06)',
-      line:{color:'rgba(8,145,178,0.3)',width:1.2},mode:'lines',showlegend:false,hoverinfo:'skip'}
-  ],{
-    ...PLOTLY_LAYOUT,
-    xaxis:{title:ma.effectLabel,gridcolor:'var(--border)',tickfont:{color:'var(--text-3)'},title_font:{color:'var(--text-3)'}},
-    yaxis:{title:'Standard Error',autorange:'reversed',gridcolor:'var(--border)',tickfont:{color:'var(--text-3)'},title_font:{color:'var(--text-3)'}},
-    margin:{l:60,r:20,t:20,b:60},height:320
-  },{responsive:true,displayModeBar:false});
+     marker:{color:'#0891b2',size:10,opacity:.8,line:{color:'white',width:1}},
+     hovertemplate:'<b>%{text}</b><br>TE: %{x:.3f}<br>SE: %{y:.3f}<extra></extra>'},
+    {type:'scatter',x:[res.TE_pooled,res.TE_pooled],y:[0,maxSE],mode:'lines',line:{color:'#c2710a',dash:'dash',width:1.8},showlegend:false,hoverinfo:'skip'},
+    {type:'scatter',
+     x:[res.TE_pooled-1.96*maxSE,res.TE_pooled,res.TE_pooled+1.96*maxSE,res.TE_pooled-1.96*maxSE],
+     y:[maxSE,0,maxSE,maxSE],fill:'toself',fillcolor:'rgba(8,145,178,.07)',line:{color:'rgba(8,145,178,.3)',width:1.2},mode:'lines',showlegend:false,hoverinfo:'skip'}
+  ],{...PL,
+    xaxis:{title:ma.effectLabel,gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:12},title_font:{color:'#78716c',size:12}},
+    yaxis:{title:'Standard Error',autorange:'reversed',gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:12},title_font:{color:'#78716c',size:12}},
+    margin:{l:60,r:20,t:20,b:60},height:300},{responsive:true,displayModeBar:false});
 }
 
 function renderLoo(ma){
-  const inf=ma.influence,res=ma.results,isBin=ma.dtype==='Binary';
+  const infl=ma.infl,res=ma.res,isBin=ma.dtype==='Binary';
   const el=document.getElementById('looPlot');
-  if(!inf.length){ el.innerHTML='<p style="padding:16px;color:var(--text-3);font-size:14px">需要 ≥ 3 篇研究才能進行敏感度分析</p>'; return; }
+  if(!infl.length){el.innerHTML='<p style="padding:16px;color:#78716c;font-size:14px">需要 ≥ 3 篇研究才能進行敏感度分析</p>';return;}
   const xf=v=>isBin?Math.exp(v):v;
-  const vals=inf.map(r=>xf(r.teDel)),lows=inf.map(r=>xf(r.lDel)),highs=inf.map(r=>xf(r.uDel));
+  const vals=infl.map(r=>xf(r.teDel)),lows=infl.map(r=>xf(r.lDel)),highs=infl.map(r=>xf(r.uDel));
   const pVal=xf(res.TE_pooled);
   Plotly.react('looPlot',[
-    {type:'scatter',x:vals,y:inf.map(r=>r.study),mode:'markers',
-      marker:{symbol:'circle',size:10,color:'#0891b2',line:{color:'white',width:1}},
-      error_x:{type:'data',symmetric:false,array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),color:'#64a8c8',thickness:1.8,width:5},
-      hovertemplate:'<b>Omit %{y}</b><br>%{x:.3f}<extra></extra>',showlegend:false},
-    {type:'scatter',x:[pVal,pVal],y:[inf[inf.length-1].study,inf[0].study],mode:'lines',
-      line:{color:'#c2710a',dash:'dash',width:2},showlegend:false,hoverinfo:'skip'}
-  ],{
-    ...PLOTLY_LAYOUT,
-    xaxis:{title:ma.measure,gridcolor:'var(--border)',tickfont:{color:'var(--text-3)'},title_font:{color:'var(--text-3)'}},
-    yaxis:{automargin:true,tickfont:{color:'var(--text)',size:12}},
-    margin:{l:130,r:20,t:20,b:60},height:Math.max(260,inf.length*36+90)
-  },{responsive:true,displayModeBar:false});
+    {type:'scatter',x:vals,y:infl.map(r=>r.study),mode:'markers',
+     marker:{symbol:'circle',size:10,color:'#0891b2',line:{color:'white',width:1}},
+     error_x:{type:'data',symmetric:false,array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),color:'#64a8c8',thickness:1.8,width:5},
+     hovertemplate:'<b>Omit %{y}</b><br>%{x:.3f}<extra></extra>',showlegend:false},
+    {type:'scatter',x:[pVal,pVal],y:[infl[infl.length-1].study,infl[0].study],mode:'lines',line:{color:'#c2710a',dash:'dash',width:2},showlegend:false,hoverinfo:'skip'}
+  ],{...PL,
+    xaxis:{title:ma.measure,gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:12},title_font:{color:'#78716c',size:12}},
+    yaxis:{automargin:true,tickfont:{color:'#1c1917',size:12}},
+    margin:{l:140,r:20,t:20,b:60},height:Math.max(260,infl.length*36+90)},{responsive:true,displayModeBar:false});
 }
 
-function renderInfluence(ma){
-  const inf=ma.influence,res=ma.results;
-  const el=document.getElementById('influencePlot');
-  if(!inf.length){ el.innerHTML='<p style="padding:16px;color:var(--text-3);font-size:14px">研究數不足（需 ≥ 3）</p>'; return; }
-  const k=inf.length, x=inf.map((_,i)=>i+1);
+function renderInfl(ma){
+  const infl=ma.infl,res=ma.res;
+  const el=document.getElementById('inflPlot');
+  if(!infl.length){el.innerHTML='<p style="padding:16px;color:#78716c;font-size:14px">研究數不足（需 ≥ 3）</p>';return;}
+  const k=infl.length,x=infl.map((_,i)=>i+1);
   const metrics=[
-    {key:'rstudent',label:'Studentized Residuals',ref:[-2,2],symRef:true},
-    {key:'dffits',label:'DFFITS',ref:[2*Math.sqrt(2/k)]},
-    {key:'cookD',label:"Cook's Distance",ref:[4/k]},
-    {key:'covR',label:'Covariance Ratio',ref:[1]},
-    {key:'tau2del',label:'Leave-One-Out τ²',ref:[res.tau2]},
-    {key:'hat',label:'Hat Values',ref:[2/k]},
+    {key:'rstudent',label:'Studentized Residuals',refs:[-2,2],sym:true},
+    {key:'dffits',label:'DFFITS',refs:[2*Math.sqrt(2/k)]},
+    {key:'cookD',label:"Cook's D",refs:[4/k]},
+    {key:'covR',label:'Covariance Ratio',refs:[1]},
+    {key:'tau2del',label:'Leave-One-Out τ²',refs:[res.tau2]},
+    {key:'hat',label:'Hat Values',refs:[2/k]},
   ];
   const nr=3,nc=2;
-  const traces=[],layout={...PLOTLY_LAYOUT,margin:{l:50,r:20,t:50,b:30},height:nr*190+60,showlegend:false};
+  const traces=[],layout={...PL,margin:{l:50,r:20,t:50,b:30},height:nr*190+60,showlegend:false};
   metrics.forEach((m,i)=>{
     const row=Math.floor(i/nc),col=i%nc;
     const xd=[col/nc+0.04,(col+1)/nc-0.04];
     const yd=[(nr-row-1)/nr+0.04,(nr-row)/nr-0.04];
     const ax=i===0?'':String(i+1);
-    const vals=inf.map(r=>r[m.key]||0);
+    const vals=infl.map(r=>r[m.key]||0);
     const maxI=vals.reduce((mi,v,ii)=>Math.abs(v)>Math.abs(vals[mi])?ii:mi,0);
-    traces.push({type:'scatter',x,y:vals,xaxis:`x${ax}`,yaxis:`y${ax}`,
-      mode:'lines+markers',line:{color:'#0891b2',width:1.5},
+    traces.push({type:'scatter',x,y:vals,xaxis:`x${ax}`,yaxis:`y${ax}`,mode:'lines+markers',
+      line:{color:'#0891b2',width:1.5},
       marker:{color:vals.map((_,ii)=>ii===maxI?'#be123c':'#64a8c8'),size:7},
-      text:inf.map(r=>r.study),hovertemplate:'<b>%{text}</b><br>'+m.label+': %{y:.3f}<extra></extra>',name:m.label});
-    layout[`xaxis${ax}`]={domain:xd,showgrid:false,tickfont:{color:'var(--text-4)',size:10},title:{text:'Study #',font:{color:'var(--text-4)',size:10}}};
-    layout[`yaxis${ax}`]={domain:yd,gridcolor:'var(--border)',tickfont:{color:'var(--text-3)',size:10},title:{text:m.label,font:{color:'var(--text-3)',size:11}}};
-    m.ref.forEach(ref=>{
-      traces.push({type:'scatter',x:[1,k],y:[ref,ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
-        mode:'lines',line:{color:'#c2710a',dash:'dot',width:1.2},hoverinfo:'skip',showlegend:false});
-      if(m.symRef) traces.push({type:'scatter',x:[1,k],y:[-ref,-ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
-        mode:'lines',line:{color:'#c2710a',dash:'dot',width:1.2},hoverinfo:'skip',showlegend:false});
+      text:infl.map(r=>r.study),hovertemplate:'<b>%{text}</b><br>'+m.label+': %{y:.3f}<extra></extra>',name:m.label});
+    layout[`xaxis${ax}`]={domain:xd,showgrid:false,tickfont:{color:'#a8a29e',size:10},title:{text:'Study #',font:{color:'#a8a29e',size:10}}};
+    layout[`yaxis${ax}`]={domain:yd,gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:10},title:{text:m.label,font:{color:'#78716c',size:11}}};
+    m.refs.forEach(ref=>{
+      traces.push({type:'scatter',x:[1,k],y:[ref,ref],xaxis:`x${ax}`,yaxis:`y${ax}`,mode:'lines',line:{color:'#c2710a',dash:'dot',width:1.2},hoverinfo:'skip',showlegend:false});
+      if(m.sym) traces.push({type:'scatter',x:[1,k],y:[-ref,-ref],xaxis:`x${ax}`,yaxis:`y${ax}`,mode:'lines',line:{color:'#c2710a',dash:'dot',width:1.2},hoverinfo:'skip',showlegend:false});
     });
   });
-  Plotly.react('influencePlot',traces,layout,{responsive:true,displayModeBar:false});
+  Plotly.react('inflPlot',traces,layout,{responsive:true,displayModeBar:false});
 }
 
-// Run stats
-document.getElementById('btnRunStats').addEventListener('click', ()=>{
+document.getElementById('btnStats').addEventListener('click',()=>{
   const out=document.getElementById('statsOutcomeSel').value;
   if(!out) return notify('請選擇 Outcome','warn');
   const rows=S.statsData[out];
   if(!rows?.length) return notify('找不到資料','error');
   const dtype=document.getElementById('statsDataType').value;
-  const btn=document.getElementById('btnRunStats'),sp=document.getElementById('spinStats');
-  btn.disabled=true; sp.style.display='inline-block';
+  const btn=document.getElementById('btnStats'),sp=document.getElementById('spStats');
+  btn.disabled=true;sp.style.display='inline-block';
   try{
     const ma=new MetaEngine(rows,dtype);
-    if(!ma.df.length){ notify('有效研究數為 0，請確認欄位名稱與數值','error'); btn.disabled=false; sp.style.display='none'; return; }
+    if(!ma.df.length){
+      notify('有效研究數為 0。請確認：(1)欄位名稱正確 (2)數值為純數字無文字','error');
+      console.log('Rows received:',rows.slice(0,3));
+      btn.disabled=false;sp.style.display='none';return;
+    }
+    if(isNaN(ma.res.TE_pooled)){
+      notify('統計計算結果為 NaN，請確認數值正確','error');
+      btn.disabled=false;sp.style.display='none';return;
+    }
     const isBin=dtype==='Binary';
-    const pVal=isBin?Math.exp(ma.results.TE_pooled):ma.results.TE_pooled;
-    const pLow=isBin?Math.exp(ma.results.lower_pooled):ma.results.lower_pooled;
-    const pHigh=isBin?Math.exp(ma.results.upper_pooled):ma.results.upper_pooled;
-    const i2col=ma.results.I2>75?'var(--red)':ma.results.I2>50?'var(--amber)':'var(--green)';
-    document.getElementById('statsSummaryBoxes').innerHTML=`
-      <div class="stat-box"><h4>Pooled Effect (${ma.measure})</h4>
+    const pVal=isBin?Math.exp(ma.res.TE_pooled):ma.res.TE_pooled;
+    const pLow=isBin?Math.exp(ma.res.lower_pooled):ma.res.lower_pooled;
+    const pHigh=isBin?Math.exp(ma.res.upper_pooled):ma.res.upper_pooled;
+    const i2col=ma.res.I2>75?'#be123c':ma.res.I2>50?'#c2710a':'#047857';
+    document.getElementById('statsSumBoxes').innerHTML=`
+      <div class="stat-box"><h4>Pooled ${ma.measure}</h4>
         <div class="sv">${pVal.toFixed(3)}</div>
         <div class="ss">95% CI: [${pLow.toFixed(3)}, ${pHigh.toFixed(3)}]</div></div>
       <div class="stat-box"><h4>Heterogeneity I²</h4>
-        <div class="sv" style="color:${i2col}">${ma.results.I2.toFixed(1)}%</div>
-        <div class="ss">τ² = ${ma.results.tau2.toFixed(4)}</div></div>
+        <div class="sv" style="color:${i2col}">${ma.res.I2.toFixed(1)}%</div>
+        <div class="ss">τ² = ${ma.res.tau2.toFixed(4)}</div></div>
       <div class="stat-box"><h4>Cochran's Q</h4>
-        <div class="sv">${ma.results.Q.toFixed(2)}</div>
-        <div class="ss">p = ${ma.results.p_Q.toFixed(4)} · ${ma.df.length} studies</div></div>`;
+        <div class="sv">${ma.res.Q.toFixed(2)}</div>
+        <div class="ss">p = ${ma.res.p_Q.toFixed(4)} · ${ma.df.length} studies</div></div>`;
     document.getElementById('statsResults').style.display='block';
-    setTimeout(()=>{ renderForest(ma); renderFunnel(ma); renderLoo(ma); renderInfluence(ma); },50);
+    setTimeout(()=>{renderForest(ma);renderFunnel(ma);renderLoo(ma);renderInfl(ma);},60);
     notify(`分析完成：${ma.df.length} 篇研究 ✓`,'success');
-  }catch(e){ notify('分析失敗: '+e.message,'error'); console.error(e); }
-  btn.disabled=false; sp.style.display='none';
+  }catch(e){notify('分析失敗: '+e.message,'error');console.error(e);}
+  btn.disabled=false;sp.style.display='none';
 });
 </script>
 </body>
