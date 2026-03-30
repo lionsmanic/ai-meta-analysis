@@ -324,8 +324,29 @@ td input:focus{border-bottom-color:var(--teal)}
       <div id="meshOut" style="margin-top:13px;display:none">
         <div class="sec-lbl">AI 建議檢索策略</div>
         <div class="code-block" id="meshContent"></div>
-        <div style="margin-top:8px;display:flex;gap:8px">
-          <button class="btn btn-ghost btn-sm" id="btnCopyMesh">📋 複製策略</button>
+        <div style="margin-top:14px">
+          <div class="sec-lbl" style="margin-top:0">📤 直接搜尋 PubMed — 可編輯後送出</div>
+          <div style="background:#fff;border:1.5px solid var(--teal);border-radius:var(--r-sm);overflow:hidden">
+            <div style="background:var(--teal-lt);padding:8px 12px;font-size:12px;color:var(--teal-dk);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+              <span>✏️ 從策略中自動萃取的查詢字串，可直接修改後搜尋</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <label class="cb-lbl" style="font-size:12px">
+                  <input type="checkbox" id="searchRetmax200"> 限制 200 篇
+                </label>
+                <span id="pubmedResultCount" style="font-size:12px;color:var(--teal-dk);font-weight:600"></span>
+              </div>
+            </div>
+            <textarea id="pubmedQueryEdit" rows="4" style="border:none;border-radius:0;font-family:'DM Mono',monospace;font-size:12.5px;background:#fff;padding:12px 14px;resize:vertical;min-height:80px" placeholder="AI 策略生成後，此處將自動填入 PubMed 查詢字串…"></textarea>
+          </div>
+          <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="btnPubmedSearch"><span class="spin" id="spPubSearch" style="display:none"></span>🔍 搜尋 PubMed 並帶入 Step 2</button>
+            <button class="btn btn-ghost btn-sm" id="btnCopyMesh">📋 複製完整策略</button>
+            <a id="btnOpenPubmed" href="#" target="_blank" class="btn btn-ghost btn-sm" style="display:none">🌐 在 PubMed 網站開啟</a>
+          </div>
+          <div id="pubmedSearchProg" style="display:none;margin-top:10px">
+            <div class="prog-wrap"><div class="prog-bar" id="pubSearchBar" style="width:0%"></div></div>
+            <div class="prog-lbl" id="pubSearchStat">搜尋中…</div>
+          </div>
         </div>
       </div>
     </div>
@@ -837,14 +858,113 @@ O MeSH: [list terms]
 [Add filter tags here, e.g., "Randomized Controlled Trial"[pt] AND "Humans"[Mesh]]`,4000);
     document.getElementById('meshContent').textContent=res;
     document.getElementById('meshOut').style.display='block';
+
+    // Auto-extract the Complete PubMed Query section into the editable textarea
+    const extracted = extractPubmedQuery(res);
+    document.getElementById('pubmedQueryEdit').value = extracted;
+    document.getElementById('pubmedResultCount').textContent = '';
+    document.getElementById('pubmedSearchProg').style.display='none';
+    // Update the "Open in PubMed" link
+    updateOpenPubmedLink(extracted);
+
     notify('MeSH 策略生成完成 ✓','success');
   }catch(e){notify(e.message,'error');}
   btn.disabled=false;sp.style.display='none';
 });
 
+// Extract the query block from AI output
+function extractPubmedQuery(text){
+  // Try to grab content between "=== Complete PubMed Query ===" and the next "==="
+  const match = text.match(/===\s*Complete PubMed Query\s*===\s*\n([\s\S]*?)(?:===|$)/i);
+  if(match && match[1].trim()){
+    return match[1].trim();
+  }
+  // Fallback: find the longest line that contains [Mesh] or [tiab] or AND/OR with brackets
+  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>30);
+  const queryLine = lines.find(l=>
+    (l.includes('[Mesh]')||l.includes('[tiab]')||l.includes('[pt]')) && (l.includes(' AND ')||l.includes(' OR '))
+  );
+  if(queryLine) return queryLine;
+  // Last fallback: return everything after the last "===" section header
+  const lastSection = text.split(/===.*===/g).pop();
+  return (lastSection||text).trim().substring(0,1000);
+}
+
+function updateOpenPubmedLink(query){
+  const link = document.getElementById('btnOpenPubmed');
+  if(!query){link.style.display='none';return;}
+  const url = 'https://pubmed.ncbi.nlm.nih.gov/?term='+encodeURIComponent(query);
+  link.href = url;
+  link.style.display = 'inline-flex';
+}
+
+// Update link when user edits the query box
+document.getElementById('pubmedQueryEdit').addEventListener('input', function(){
+  updateOpenPubmedLink(this.value.trim());
+  document.getElementById('pubmedResultCount').textContent='';
+});
+
 document.getElementById('btnCopyMesh').addEventListener('click',()=>{
   const txt=document.getElementById('meshContent').textContent;
   navigator.clipboard.writeText(txt).then(()=>notify('已複製至剪貼簿 ✓','success')).catch(()=>notify('複製失敗','error'));
+});
+
+// ── PubMed esearch → auto-populate Step 2 ──
+document.getElementById('btnPubmedSearch').addEventListener('click', async()=>{
+  const query = document.getElementById('pubmedQueryEdit').value.trim();
+  if(!query){notify('查詢字串不能為空，請先生成 MeSH 策略','warn');return;}
+
+  const btn=document.getElementById('btnPubmedSearch'), sp=document.getElementById('spPubSearch');
+  const prog=document.getElementById('pubmedSearchProg'), bar=document.getElementById('pubSearchBar'), stat=document.getElementById('pubSearchStat');
+  const countEl=document.getElementById('pubmedResultCount');
+  btn.disabled=true; sp.style.display='inline-block'; prog.style.display='block';
+  bar.style.width='10%'; stat.textContent='正在搜尋 PubMed…'; countEl.textContent='';
+
+  try{
+    const retmax = document.getElementById('searchRetmax200').checked ? 200 : 500;
+    // Step 1: esearch to get total count + PMIDs
+    const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${retmax}&retmode=json&email=researcher@example.com`;
+    const resp = await fetch(searchUrl);
+    if(!resp.ok) throw new Error(`PubMed esearch 失敗 (${resp.status})`);
+    const data = await resp.json();
+    bar.style.width='70%';
+
+    const total = parseInt(data.esearchresult?.count||'0', 10);
+    const pmids = data.esearchresult?.idlist||[];
+
+    if(!pmids.length){
+      stat.textContent='搜尋完成，無結果';
+      countEl.textContent='0 篇';
+      notify('PubMed 搜尋無結果，請調整查詢策略','warn');
+      btn.disabled=false; sp.style.display='none';
+      return;
+    }
+
+    bar.style.width='100%';
+    stat.textContent=`找到 ${total} 篇（已取前 ${pmids.length} 篇 PMID）`;
+    countEl.textContent=`共 ${total} 篇，已取 ${pmids.length} 篇`;
+
+    // Step 2: populate Step 2 textarea
+    document.getElementById('pmidInput').value = pmids.join(', ');
+
+    // Step 3: navigate to Step 2
+    setTimeout(()=>{
+      document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+      const screenItem = document.querySelector('.sb-item[data-tab="tab-screen"]');
+      screenItem.classList.add('active');
+      document.getElementById('tab-screen').classList.add('active');
+      document.getElementById('page-title').textContent='文獻篩選';
+      document.getElementById('stepPill').textContent='Step 2 / 5';
+
+      notify(`已帶入 ${pmids.length} 篇 PMID 至 Step 2，可直接開始篩選 ✓`,'success',5000);
+    }, 600);
+
+  }catch(e){
+    stat.textContent='搜尋失敗：'+e.message;
+    notify('PubMed 搜尋失敗：'+e.message,'error');
+  }
+  btn.disabled=false; sp.style.display='none';
 });
 
 // ── TAB 2: SCREENING (FIX 2: parallel batch) ──
