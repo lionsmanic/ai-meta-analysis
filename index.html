@@ -745,15 +745,51 @@ document.getElementById('btnPico').addEventListener('click',async()=>{
   btn.disabled=true;sp.style.display='inline-block';
   try{
     const res=await gemini(
-      `Analyze the research topic: "${topic}".
-Identify PICO: Population, Intervention, Comparison, Primary Outcome, Secondary Outcomes.
-Return ONLY this single line format with exactly 5 parts separated by " | ":
-P | I | C | O1 | O2 (comma-separated list for O2)
-IMPORTANT: Plain English only. No markdown. No extra text.
-Example: Adult cervical cancer patients | Neoadjuvant immunotherapy | Chemotherapy alone | Pathological complete response | Overall survival, PFS, Grade 3+ adverse events`,400);
-    const parts=res.trim().split('|').map(s=>s.trim());
-    if(parts.length>=5){setPico(parts[0],parts[1],parts[2],parts[3],parts[4]);notify('PICO 拆解成功 ✓','success');}
-    else notify('AI 格式異常，請手動填寫','warn');
+      `You are a systematic review expert. Extract the PICO from this research topic.
+
+Research topic: "${topic}"
+
+YOUR RESPONSE MUST BE EXACTLY ONE LINE with 5 fields separated by the pipe character "|".
+Do NOT write any other text, explanation, or header. Just the one pipe-separated line.
+
+Field order: Population | Intervention | Comparison | Primary Outcome | Secondary Outcomes
+
+Secondary Outcomes = comma-separated list in one field.
+
+Example output (copy this format exactly):
+Adult patients with locally advanced cervical cancer | Neoadjuvant immunotherapy (PD-1 inhibitors) | Standard chemotherapy | Pathological complete response rate | Overall survival, Progression-free survival, Grade ≥3 adverse events`,600);
+
+    // Robust parsing: find the line that contains at least 3 pipe characters
+    const lines = res.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+    let pipeLine = lines.find(l=>(l.match(/\|/g)||[]).length>=3);
+
+    // Fallback: use any line with at least 1 pipe
+    if(!pipeLine) pipeLine = lines.find(l=>l.includes('|'));
+
+    // Fallback 2: use the full response if it has pipes
+    if(!pipeLine && res.includes('|')) pipeLine = res.replace(/\n/g,' ');
+
+    if(pipeLine){
+      const parts = pipeLine.split('|').map(s=>s.trim()).filter(s=>s.length>0);
+      // Accept if we got at least 3 parts (P, I, C minimum)
+      if(parts.length>=3){
+        setPico(
+          parts[0]||'',
+          parts[1]||'',
+          parts[2]||'',
+          parts[3]||'',
+          parts[4]||''
+        );
+        notify('PICO 拆解成功 ✓','success');
+      } else {
+        notify('AI 回傳格式不符，已顯示原始結果，請手動調整','warn');
+        document.getElementById('picoP').value=res.substring(0,200);
+      }
+    } else {
+      // Last resort: show raw response in P field
+      notify('無法解析 AI 回傳，請參考以下內容手動填寫','warn');
+      document.getElementById('picoP').value=res.substring(0,300);
+    }
   }catch(e){notify(e.message,'error');}
   btn.disabled=false;sp.style.display='none';
 });
