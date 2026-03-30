@@ -312,41 +312,63 @@ td input:focus{border-bottom-color:var(--teal)}
     </div>
 
     <div class="card">
-      <div class="card-head"><div class="ci ci-amber">🔬</div><div class="cht"><h2>PubMed MeSH 策略生成</h2></div></div>
-      <div class="sec-lbl">Study Design Filters</div>
-      <div class="flex-row" style="gap:16px;margin-bottom:13px">
-        <label class="cb-lbl"><input type="checkbox" id="fRCT"> 限定 RCT</label>
-        <label class="cb-lbl"><input type="checkbox" id="fNoRev" checked> 排除 Review/Meta</label>
-        <label class="cb-lbl"><input type="checkbox" id="fHuman" checked> 限定人體研究</label>
-        <label class="cb-lbl"><input type="checkbox" id="fEng" checked> 限定英文</label>
+      <div class="card-head"><div class="ci ci-amber">🔬</div><div class="cht"><h2>MeSH 驗證 &amp; 策略生成</h2><p>AI 提議關鍵詞 → NCBI MeSH 即時驗證 → 組合查詢</p></div></div>
+
+      <!-- Phase 1 -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <div style="background:var(--teal);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">1</div>
+        <span style="font-weight:600;font-size:14px">AI 提議各 PICO 元素的候選關鍵詞</span>
+        <button class="btn btn-amber btn-sm" id="btnSuggestMesh"><span class="spin" id="spSuggest" style="display:none"></span>✨ 產生關鍵詞建議</button>
       </div>
-      <button class="btn btn-amber" id="btnMesh"><span class="spin" id="spMesh" style="display:none"></span>🚀 生成 MeSH 策略</button>
+      <div id="meshSuggestOut" style="display:none;margin-bottom:16px">
+        <div id="meshSuggestPanels" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+
+      <!-- Phase 2 -->
+      <div id="meshValidateSection" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="background:var(--teal);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">2</div>
+          <span style="font-weight:600;font-size:14px">NCBI MeSH 資料庫驗證 — 勾選要納入的 terms</span>
+          <span class="spin" id="spValidate" style="display:none;color:var(--teal)"></span>
+        </div>
+        <div id="meshValidatePanel" style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:14px"></div>
+      </div>
+
+      <!-- Phase 3 -->
+      <div id="meshBuildSection" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="background:var(--teal);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">3</div>
+          <span style="font-weight:600;font-size:14px">Study Design Filters &amp; 組合查詢</span>
+        </div>
+        <div class="flex-row" style="gap:16px;margin-bottom:13px">
+          <label class="cb-lbl"><input type="checkbox" id="fRCT"> 限定 RCT</label>
+          <label class="cb-lbl"><input type="checkbox" id="fNoRev" checked> 排除 Review/Meta</label>
+          <label class="cb-lbl"><input type="checkbox" id="fHuman" checked> 限定人體研究</label>
+          <label class="cb-lbl"><input type="checkbox" id="fEng" checked> 限定英文</label>
+        </div>
+        <button class="btn btn-amber" id="btnMesh"><span class="spin" id="spMesh" style="display:none"></span>🔨 組合 PubMed 查詢策略</button>
+      </div>
+
       <div id="meshOut" style="margin-top:13px;display:none">
-        <div class="sec-lbl">AI 建議檢索策略</div>
-        <div class="code-block" id="meshContent"></div>
-        <div style="margin-top:14px">
-          <div class="sec-lbl" style="margin-top:0">📤 直接搜尋 PubMed — 可編輯後送出</div>
-          <div style="background:#fff;border:1.5px solid var(--teal);border-radius:var(--r-sm);overflow:hidden">
-            <div style="background:var(--teal-lt);padding:8px 12px;font-size:12px;color:var(--teal-dk);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-              <span>✏️ 從策略中自動萃取的查詢字串，可直接修改後搜尋</span>
-              <div style="display:flex;align-items:center;gap:8px">
-                <label class="cb-lbl" style="font-size:12px">
-                  <input type="checkbox" id="searchRetmax200"> 限制 200 篇
-                </label>
-                <span id="pubmedResultCount" style="font-size:12px;color:var(--teal-dk);font-weight:600"></span>
-              </div>
+        <div class="sec-lbl">完整 PubMed 查詢字串（可編輯）</div>
+        <div style="background:#fff;border:1.5px solid var(--teal);border-radius:var(--r-sm);overflow:hidden">
+          <div style="background:var(--teal-lt);padding:8px 12px;font-size:12px;color:var(--teal-dk);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <span>✏️ 由驗證 MeSH terms 組合而成，可手動微調後搜尋</span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <label class="cb-lbl" style="font-size:12px"><input type="checkbox" id="searchRetmax200"> 限制 200 篇</label>
+              <span id="pubmedResultCount" style="font-size:12px;color:var(--teal-dk);font-weight:600"></span>
             </div>
-            <textarea id="pubmedQueryEdit" rows="4" style="border:none;border-radius:0;font-family:'DM Mono',monospace;font-size:12.5px;background:#fff;padding:12px 14px;resize:vertical;min-height:80px" placeholder="AI 策略生成後，此處將自動填入 PubMed 查詢字串…"></textarea>
           </div>
-          <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-primary" id="btnPubmedSearch"><span class="spin" id="spPubSearch" style="display:none"></span>🔍 搜尋 PubMed 並帶入 Step 2</button>
-            <button class="btn btn-ghost btn-sm" id="btnCopyMesh">📋 複製完整策略</button>
-            <a id="btnOpenPubmed" href="#" target="_blank" class="btn btn-ghost btn-sm" style="display:none">🌐 在 PubMed 網站開啟</a>
-          </div>
-          <div id="pubmedSearchProg" style="display:none;margin-top:10px">
-            <div class="prog-wrap"><div class="prog-bar" id="pubSearchBar" style="width:0%"></div></div>
-            <div class="prog-lbl" id="pubSearchStat">搜尋中…</div>
-          </div>
+          <textarea id="pubmedQueryEdit" rows="5" style="border:none;border-radius:0;font-family:'DM Mono',monospace;font-size:12.5px;background:#fff;padding:12px 14px;resize:vertical;min-height:90px" placeholder="查詢字串將在步驟 3 組合後顯示…"></textarea>
+        </div>
+        <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btnPubmedSearch"><span class="spin" id="spPubSearch" style="display:none"></span>🔍 搜尋 PubMed 並帶入 Step 2</button>
+          <button class="btn btn-ghost btn-sm" id="btnCopyMesh">📋 複製查詢</button>
+          <a id="btnOpenPubmed" href="#" target="_blank" class="btn btn-ghost btn-sm" style="display:none">🌐 在 PubMed 網站開啟</a>
+        </div>
+        <div id="pubmedSearchProg" style="display:none;margin-top:10px">
+          <div class="prog-wrap"><div class="prog-bar" id="pubSearchBar" style="width:0%"></div></div>
+          <div class="prog-lbl" id="pubSearchStat">搜尋中…</div>
         </div>
       </div>
     </div>
@@ -815,156 +837,325 @@ Adult patients with locally advanced cervical cancer | Neoadjuvant immunotherapy
   btn.disabled=false;sp.style.display='none';
 });
 
-// FIX 1: MeSH — plain text, no markdown, 4000 tokens
-document.getElementById('btnMesh').addEventListener('click',async()=>{
-  const pico=getPico();
-  if(!pico.p) return notify('請先填寫 PICO','warn');
-  const btn=document.getElementById('btnMesh'),sp=document.getElementById('spMesh');
-  btn.disabled=true;sp.style.display='inline-block';
-  const filters=[];
-  if(document.getElementById('fRCT').checked)   filters.push('Randomized Controlled Trials only');
-  if(document.getElementById('fNoRev').checked) filters.push('Exclude Reviews and Meta-analyses');
-  if(document.getElementById('fHuman').checked) filters.push('Humans only');
-  if(document.getElementById('fEng').checked)   filters.push('English language only');
-  try{
-    const res=await gemini(
-      `You are a PubMed expert librarian. Create a complete search strategy.
+// ══════════════════════════════════════════════════════
+// MESH WORKFLOW: Phase 1 → 2 → 3
+// ══════════════════════════════════════════════════════
+
+// STATE for validated mesh terms
+const MESH_STATE = {
+  // { picoKey: 'P'|'I'|'C'|'O', label, candidates: [{keyword, meshTerm, entryTerms[], uid, validated}] }
+  groups: []
+};
+
+// ── PHASE 1: AI suggests candidate keywords ──
+document.getElementById('btnSuggestMesh').addEventListener('click', async () => {
+  const pico = getPico();
+  if (!pico.p) return notify('請先填寫 PICO', 'warn');
+  const btn = document.getElementById('btnSuggestMesh'), sp = document.getElementById('spSuggest');
+  btn.disabled = true; sp.style.display = 'inline-block';
+
+  try {
+    const res = await gemini(
+`You are a PubMed MeSH expert. For each PICO component, suggest the best candidate search keywords to look up in the MeSH database.
+
 PICO:
-P: ${pico.p}
-I: ${pico.i}
-C: ${pico.c}
-O: ${pico.o1}; ${pico.o2}
-Filters: ${filters.join(', ')||'None'}
+P (Population): ${pico.p}
+I (Intervention): ${pico.i}
+C (Comparison): ${pico.c}
+O (Outcome): ${pico.o1}${pico.o2 ? '; ' + pico.o2 : ''}
 
-IMPORTANT OUTPUT RULES:
-- Output plain text ONLY. No markdown asterisks, no ** bold **, no bullet symbols.
-- Use simple section headers like === SECTION === on its own line.
-- Use indented plain text for lists.
+For EACH component, list 2-4 candidate English keywords that are likely to be valid MeSH terms.
+Use this EXACT format (no extra text):
+P: keyword1 | keyword2 | keyword3
+I: keyword1 | keyword2 | keyword3
+C: keyword1 | keyword2
+O: keyword1 | keyword2 | keyword3
 
-Format your output in these sections:
-=== MeSH Terms ===
-P MeSH: [list terms]
-I MeSH: [list terms]
-C MeSH: [list terms]
-O MeSH: [list terms]
+Rules:
+- Each keyword should be a concise English noun phrase (1-4 words)
+- Choose terms that are likely to exist as MeSH headings
+- For drugs/interventions, use generic names
+- No markdown, no extra explanation`, 600);
 
-=== Key Synonyms / Free Text ===
-[list important synonyms and free-text alternatives]
+    // Parse the response
+    MESH_STATE.groups = [];
+    const lines = res.trim().split('\n').filter(l => l.trim());
+    const labelMap = { 'P': 'Population (P)', 'I': 'Intervention (I)', 'C': 'Comparison (C)', 'O': 'Outcome (O)' };
+    lines.forEach(line => {
+      const m = line.match(/^([PICO]):\s*(.+)/i);
+      if (!m) return;
+      const key = m[1].toUpperCase();
+      const kws = m[2].split('|').map(s => s.trim()).filter(s => s);
+      MESH_STATE.groups.push({
+        picoKey: key,
+        label: labelMap[key] || key,
+        candidates: kws.map(kw => ({ keyword: kw, meshTerm: null, entryTerms: [], uid: null, validated: false, selected: true }))
+      });
+    });
 
-=== Complete PubMed Query ===
-[Full ready-to-paste Boolean query with AND/OR/NOT and field tags like [Mesh] [tiab] [pt]]
+    renderSuggestPanels();
+    document.getElementById('meshSuggestOut').style.display = 'block';
 
-=== Filter Strings ===
-[Add filter tags here, e.g., "Randomized Controlled Trial"[pt] AND "Humans"[Mesh]]`,4000);
-    document.getElementById('meshContent').textContent=res;
-    document.getElementById('meshOut').style.display='block';
+    // Auto-trigger Phase 2
+    await runMeshValidation();
 
-    // Auto-extract the Complete PubMed Query section into the editable textarea
-    const extracted = extractPubmedQuery(res);
-    document.getElementById('pubmedQueryEdit').value = extracted;
-    document.getElementById('pubmedResultCount').textContent = '';
-    document.getElementById('pubmedSearchProg').style.display='none';
-    // Update the "Open in PubMed" link
-    updateOpenPubmedLink(extracted);
-
-    notify('MeSH 策略生成完成 ✓','success');
-  }catch(e){notify(e.message,'error');}
-  btn.disabled=false;sp.style.display='none';
+  } catch(e) { notify(e.message, 'error'); }
+  btn.disabled = false; sp.style.display = 'none';
 });
 
-// Extract the query block from AI output
-function extractPubmedQuery(text){
-  // Try to grab content between "=== Complete PubMed Query ===" and the next "==="
-  const match = text.match(/===\s*Complete PubMed Query\s*===\s*\n([\s\S]*?)(?:===|$)/i);
-  if(match && match[1].trim()){
-    return match[1].trim();
-  }
-  // Fallback: find the longest line that contains [Mesh] or [tiab] or AND/OR with brackets
-  const lines = text.split('\n').map(l=>l.trim()).filter(l=>l.length>30);
-  const queryLine = lines.find(l=>
-    (l.includes('[Mesh]')||l.includes('[tiab]')||l.includes('[pt]')) && (l.includes(' AND ')||l.includes(' OR '))
-  );
-  if(queryLine) return queryLine;
-  // Last fallback: return everything after the last "===" section header
-  const lastSection = text.split(/===.*===/g).pop();
-  return (lastSection||text).trim().substring(0,1000);
+function renderSuggestPanels() {
+  const el = document.getElementById('meshSuggestPanels');
+  el.innerHTML = MESH_STATE.groups.map((g, gi) => `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 13px">
+      <div style="font-size:12px;font-weight:700;color:var(--teal-dk);text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px">${g.label}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${g.candidates.map((c, ci) => `
+          <div style="display:flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:12.5px;cursor:pointer" data-gi="${gi}" data-ci="${ci}" class="kw-chip" title="點擊移除此關鍵詞">
+            <span class="kw-text">${c.keyword}</span>
+            <span style="color:var(--text4);font-size:11px">✕</span>
+          </div>`).join('')}
+        <input type="text" placeholder="+ 新增關鍵詞" data-gi="${gi}"
+          style="border:1px dashed var(--border2);border-radius:20px;padding:3px 10px;font-size:12.5px;width:130px;background:transparent;outline:none;color:var(--text)"
+          class="kw-add-inp">
+      </div>
+    </div>`).join('');
+
+  // Remove chip click
+  el.querySelectorAll('.kw-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const gi = +chip.dataset.gi, ci = +chip.dataset.ci;
+      MESH_STATE.groups[gi].candidates.splice(ci, 1);
+      renderSuggestPanels();
+    });
+  });
+  // Add keyword on Enter
+  el.querySelectorAll('.kw-add-inp').forEach(inp => {
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && inp.value.trim()) {
+        const gi = +inp.dataset.gi;
+        MESH_STATE.groups[gi].candidates.push({ keyword: inp.value.trim(), meshTerm: null, entryTerms: [], uid: null, validated: false, selected: true });
+        renderSuggestPanels();
+      }
+    });
+  });
 }
 
-function updateOpenPubmedLink(query){
+// ── PHASE 2: NCBI MeSH validation ──
+async function runMeshValidation() {
+  document.getElementById('meshValidateSection').style.display = 'block';
+  document.getElementById('spValidate').style.display = 'inline-block';
+  document.getElementById('meshValidatePanel').innerHTML =
+    '<div style="padding:16px;color:var(--text3);font-size:13px">🔍 正在查詢 NCBI MeSH 資料庫…</div>';
+
+  // Query NCBI MeSH for each candidate keyword
+  for (const group of MESH_STATE.groups) {
+    for (const cand of group.candidates) {
+      try {
+        cand.meshTerm = null; cand.entryTerms = []; cand.uid = null; cand.validated = false;
+        // esearch in MeSH database
+        const sr = await fetch(
+          `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=mesh&term=${encodeURIComponent(cand.keyword)}&retmax=1&retmode=json`
+        );
+        if (!sr.ok) { await sleep(400); continue; }
+        const sd = await sr.json();
+        const uid = sd.esearchresult?.idlist?.[0];
+        if (!uid) { cand.validated = false; await sleep(200); continue; }
+        cand.uid = uid;
+
+        // esummary to get preferred heading + entry terms
+        await sleep(150); // NCBI rate limit courtesy
+        const dr = await fetch(
+          `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=mesh&id=${uid}&retmode=json`
+        );
+        if (!dr.ok) { await sleep(400); continue; }
+        const dd = await dr.json();
+        const rec = dd.result?.[uid];
+        if (!rec) { await sleep(200); continue; }
+
+        // DS_MeshTerms contains the preferred heading
+        const heading = rec.ds_meshterms?.[0] || rec.ds_idxlinks?.[0]?.ds_meshterms?.[0];
+        const scope = rec.ds_scopenote || '';
+        const treeNums = rec.ds_treenumbers || [];
+        // Entry terms (synonyms) from DS_Aliases or similar
+        const aliases = rec.ds_aliases || [];
+
+        cand.meshTerm = heading || null;
+        cand.entryTerms = aliases.slice(0, 6);
+        cand.scopeNote = scope.substring(0, 120) + (scope.length > 120 ? '…' : '');
+        cand.treeNums = treeNums.slice(0, 3);
+        cand.validated = !!heading;
+        cand.selected = !!heading; // auto-select if validated
+        await sleep(150);
+      } catch(e) { cand.validated = false; }
+    }
+  }
+
+  document.getElementById('spValidate').style.display = 'none';
+  renderValidatePanel();
+  document.getElementById('meshBuildSection').style.display = 'block';
+  notify('MeSH 驗證完成，請確認選取的 terms ✓', 'success');
+}
+
+function renderValidatePanel() {
+  const el = document.getElementById('meshValidatePanel');
+  const colHeaderBg = '#f0f4f8';
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:13px">
+    <thead>
+      <tr style="background:${colHeaderBg}">
+        <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);width:30px">納入</th>
+        <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.07em">PICO</th>
+        <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.07em">您的關鍵詞</th>
+        <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.07em">NCBI MeSH 驗證結果</th>
+        <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.07em">Tree Numbers</th>
+        <th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.07em">同義詞 (Entry Terms)</th>
+      </tr>
+    </thead><tbody>`;
+
+  MESH_STATE.groups.forEach((g, gi) => {
+    g.candidates.forEach((c, ci) => {
+      const rowBg = ci % 2 === 0 ? '#fff' : '#faf8f4';
+      const validBadge = c.meshTerm
+        ? `<span style="background:#d1fae5;color:#047857;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:6px">✓ MeSH</span>`
+        : `<span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:6px">⚠ 未找到</span>`;
+      const meshDisplay = c.meshTerm
+        ? `<span style="font-weight:600;color:#0369a1">"${c.meshTerm}"[Mesh]</span>${c.scopeNote ? `<div style="font-size:11px;color:var(--text3);margin-top:2px">${c.scopeNote}</div>` : ''}`
+        : `<span style="color:var(--text4);font-style:italic">— 將以 free-text 搜尋 [tiab]</span>`;
+      const trees = c.treeNums?.length
+        ? c.treeNums.map(t => `<span style="background:#e0f5f9;color:#0369a1;font-family:'DM Mono',monospace;font-size:10px;padding:1px 6px;border-radius:4px">${t}</span>`).join(' ')
+        : '<span style="color:var(--text4);font-size:12px">—</span>';
+      const aliases = c.entryTerms?.length
+        ? c.entryTerms.map(a => `<span style="background:var(--gray-lt);color:var(--gray);font-size:11px;padding:1px 6px;border-radius:10px">${a}</span>`).join(' ')
+        : '<span style="color:var(--text4);font-size:12px">—</span>';
+
+      html += `<tr style="background:${rowBg}" class="mesh-row" data-gi="${gi}" data-ci="${ci}">
+        <td style="padding:9px 12px;border-bottom:1px solid var(--border);text-align:center">
+          <input type="checkbox" ${c.selected ? 'checked' : ''} class="mesh-check" data-gi="${gi}" data-ci="${ci}" style="width:15px;height:15px;accent-color:var(--teal);cursor:pointer">
+        </td>
+        <td style="padding:9px 12px;border-bottom:1px solid var(--border)">
+          <span style="background:var(--teal-lt);color:var(--teal-dk);font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px">${g.picoKey}</span>
+        </td>
+        <td style="padding:9px 12px;border-bottom:1px solid var(--border);font-family:'DM Mono',monospace;color:var(--text2)">${c.keyword}${validBadge}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid var(--border)">${meshDisplay}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid var(--border)">${trees}</td>
+        <td style="padding:9px 12px;border-bottom:1px solid var(--border);max-width:200px">${aliases}</td>
+      </tr>`;
+    });
+  });
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+
+  // Wire checkboxes
+  el.querySelectorAll('.mesh-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      MESH_STATE.groups[+cb.dataset.gi].candidates[+cb.dataset.ci].selected = cb.checked;
+    });
+  });
+}
+
+// ── PHASE 3: Build query from selected terms ──
+document.getElementById('btnMesh').addEventListener('click', () => {
+  const filters = [];
+  if (document.getElementById('fRCT').checked)    filters.push('"Randomized Controlled Trial"[pt]');
+  if (document.getElementById('fNoRev').checked)  filters.push('NOT ("Review"[pt] OR "Systematic Review"[pt] OR "Meta-Analysis"[pt])');
+  if (document.getElementById('fHuman').checked)  filters.push('"Humans"[Mesh]');
+  if (document.getElementById('fEng').checked)    filters.push('"English"[lang]');
+
+  // Build per-PICO component groups
+  const groupParts = {};
+  MESH_STATE.groups.forEach(g => {
+    const selected = g.candidates.filter(c => c.selected);
+    if (!selected.length) return;
+    const termParts = selected.map(c => {
+      if (c.meshTerm) {
+        // Include both MeSH and free-text [tiab] for sensitivity
+        const mesh = `"${c.meshTerm}"[Mesh]`;
+        const tiab = `"${c.keyword}"[tiab]`;
+        return `(${mesh} OR ${tiab})`;
+      } else {
+        // No MeSH found — use free text
+        return `"${c.keyword}"[tiab]`;
+      }
+    });
+    groupParts[g.picoKey] = `(${termParts.join(' OR ')})`;
+  });
+
+  const picoOrder = ['P', 'I', 'C', 'O'];
+  const mainParts = picoOrder.filter(k => groupParts[k]).map(k => groupParts[k]);
+  let query = mainParts.join('\nAND ');
+
+  if (filters.length) {
+    query += '\nAND ' + filters.join('\nAND ');
+  }
+
+  document.getElementById('pubmedQueryEdit').value = query;
+  document.getElementById('meshOut').style.display = 'block';
+  updateOpenPubmedLink(query);
+  document.getElementById('pubmedResultCount').textContent = '';
+  notify('查詢策略已組合完成，可編輯後搜尋 ✓', 'success');
+  document.getElementById('meshOut').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+function updateOpenPubmedLink(query) {
   const link = document.getElementById('btnOpenPubmed');
-  if(!query){link.style.display='none';return;}
-  const url = 'https://pubmed.ncbi.nlm.nih.gov/?term='+encodeURIComponent(query);
-  link.href = url;
+  if (!query) { link.style.display = 'none'; return; }
+  link.href = 'https://pubmed.ncbi.nlm.nih.gov/?term=' + encodeURIComponent(query);
   link.style.display = 'inline-flex';
 }
 
-// Update link when user edits the query box
-document.getElementById('pubmedQueryEdit').addEventListener('input', function(){
+document.getElementById('pubmedQueryEdit').addEventListener('input', function () {
   updateOpenPubmedLink(this.value.trim());
-  document.getElementById('pubmedResultCount').textContent='';
+  document.getElementById('pubmedResultCount').textContent = '';
 });
 
-document.getElementById('btnCopyMesh').addEventListener('click',()=>{
-  const txt=document.getElementById('meshContent').textContent;
-  navigator.clipboard.writeText(txt).then(()=>notify('已複製至剪貼簿 ✓','success')).catch(()=>notify('複製失敗','error'));
+document.getElementById('btnCopyMesh').addEventListener('click', () => {
+  const txt = document.getElementById('pubmedQueryEdit').value;
+  navigator.clipboard.writeText(txt).then(() => notify('已複製至剪貼簿 ✓', 'success')).catch(() => notify('複製失敗', 'error'));
 });
 
 // ── PubMed esearch → auto-populate Step 2 ──
-document.getElementById('btnPubmedSearch').addEventListener('click', async()=>{
+document.getElementById('btnPubmedSearch').addEventListener('click', async () => {
   const query = document.getElementById('pubmedQueryEdit').value.trim();
-  if(!query){notify('查詢字串不能為空，請先生成 MeSH 策略','warn');return;}
-
-  const btn=document.getElementById('btnPubmedSearch'), sp=document.getElementById('spPubSearch');
-  const prog=document.getElementById('pubmedSearchProg'), bar=document.getElementById('pubSearchBar'), stat=document.getElementById('pubSearchStat');
-  const countEl=document.getElementById('pubmedResultCount');
-  btn.disabled=true; sp.style.display='inline-block'; prog.style.display='block';
-  bar.style.width='10%'; stat.textContent='正在搜尋 PubMed…'; countEl.textContent='';
-
-  try{
+  if (!query) { notify('查詢字串不能為空', 'warn'); return; }
+  const btn = document.getElementById('btnPubmedSearch'), sp = document.getElementById('spPubSearch');
+  const prog = document.getElementById('pubmedSearchProg'), bar = document.getElementById('pubSearchBar'), stat = document.getElementById('pubSearchStat');
+  const countEl = document.getElementById('pubmedResultCount');
+  btn.disabled = true; sp.style.display = 'inline-block'; prog.style.display = 'block';
+  bar.style.width = '10%'; stat.textContent = '正在搜尋 PubMed…'; countEl.textContent = '';
+  try {
     const retmax = document.getElementById('searchRetmax200').checked ? 200 : 500;
-    // Step 1: esearch to get total count + PMIDs
-    const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${retmax}&retmode=json&email=researcher@example.com`;
-    const resp = await fetch(searchUrl);
-    if(!resp.ok) throw new Error(`PubMed esearch 失敗 (${resp.status})`);
+    const resp = await fetch(
+      `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=${retmax}&retmode=json&email=researcher@example.com`
+    );
+    if (!resp.ok) throw new Error(`PubMed esearch 失敗 (${resp.status})`);
     const data = await resp.json();
-    bar.style.width='70%';
-
-    const total = parseInt(data.esearchresult?.count||'0', 10);
-    const pmids = data.esearchresult?.idlist||[];
-
-    if(!pmids.length){
-      stat.textContent='搜尋完成，無結果';
-      countEl.textContent='0 篇';
-      notify('PubMed 搜尋無結果，請調整查詢策略','warn');
-      btn.disabled=false; sp.style.display='none';
-      return;
+    bar.style.width = '100%';
+    const total = parseInt(data.esearchresult?.count || '0', 10);
+    const pmids = data.esearchresult?.idlist || [];
+    if (!pmids.length) {
+      stat.textContent = '搜尋完成，無結果';
+      countEl.textContent = '0 篇';
+      notify('PubMed 搜尋無結果，請調整查詢策略', 'warn');
+      btn.disabled = false; sp.style.display = 'none'; return;
     }
-
-    bar.style.width='100%';
-    stat.textContent=`找到 ${total} 篇（已取前 ${pmids.length} 篇 PMID）`;
-    countEl.textContent=`共 ${total} 篇，已取 ${pmids.length} 篇`;
-
-    // Step 2: populate Step 2 textarea
+    stat.textContent = `找到 ${total} 篇（已取前 ${pmids.length} 篇）`;
+    countEl.textContent = `共 ${total} 篇，已取 ${pmids.length} 篇`;
     document.getElementById('pmidInput').value = pmids.join(', ');
-
-    // Step 3: navigate to Step 2
-    setTimeout(()=>{
-      document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
-      const screenItem = document.querySelector('.sb-item[data-tab="tab-screen"]');
-      screenItem.classList.add('active');
+    setTimeout(() => {
+      document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelector('.sb-item[data-tab="tab-screen"]').classList.add('active');
       document.getElementById('tab-screen').classList.add('active');
-      document.getElementById('page-title').textContent='文獻篩選';
-      document.getElementById('stepPill').textContent='Step 2 / 5';
-
-      notify(`已帶入 ${pmids.length} 篇 PMID 至 Step 2，可直接開始篩選 ✓`,'success',5000);
-    }, 600);
-
-  }catch(e){
-    stat.textContent='搜尋失敗：'+e.message;
-    notify('PubMed 搜尋失敗：'+e.message,'error');
+      document.getElementById('page-title').textContent = '文獻篩選';
+      document.getElementById('stepPill').textContent = 'Step 2 / 5';
+      notify(`已帶入 ${pmids.length} 篇 PMID 至 Step 2 ✓`, 'success', 5000);
+    }, 500);
+  } catch(e) {
+    stat.textContent = '搜尋失敗：' + e.message;
+    notify('PubMed 搜尋失敗：' + e.message, 'error');
   }
-  btn.disabled=false; sp.style.display='none';
+  btn.disabled = false; sp.style.display = 'none';
 });
 
 // ── TAB 2: SCREENING (FIX 2: parallel batch) ──
