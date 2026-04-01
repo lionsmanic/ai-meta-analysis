@@ -2291,7 +2291,7 @@ function renderExtractResults(){
       <div class="tbl-wrap" style="overflow-x:auto"><table><thead><tr>${sch.map((s,si)=>`<th style="min-width:${minW[si]}px">${s}</th>`).join('')}</tr></thead><tbody>
       ${S.charTable.map(r=>`<tr>${sch.map((_,i)=>`<td><input value="${esc(r[i]||'')}" style="min-width:${minW[i]-8}px"></td>`).join('')}</tr>`).join('')}
       </tbody></table></div></div>`;
-  }}
+  }
   Object.entries(S.extractedDS).forEach(([out,{rows,dtype,schema}])=>{
     html+=`<div class="card"><div class="card-head"><div class="ci ci-teal">📊</div>
       <div class="cht"><h2>${out}</h2><p style="font-size:12px">${dtype} · ${rows.length} studies found</p></div>
