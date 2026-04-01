@@ -590,7 +590,13 @@ td input:focus{border-bottom-color:var(--teal)}
   <div id="tab-stats" class="tab-pane">
     <div class="card">
       <div class="card-head"><div class="ci ci-teal">📈</div><div class="cht"><h2>統計分析 — Human-in-the-Loop</h2><p>上傳校正後的 CSV/XLSX，自動執行 Meta-Analysis</p></div></div>
-      <div class="info-box"><span>💡</span> Step 4 下載 CSV → 手動校正數值 → 上傳此處分析。檔名 = Outcome 名稱。</div>
+      <div class="info-box"><span>💡</span>
+        <div>
+          Step 4 下載 CSV → 手動校正數值 → 上傳此處分析。<b>每個 Outcome 需上傳一個 CSV，檔名即為 Outcome 名稱。</b><br>
+          例如：上傳「癌症復發.csv」和「更年期症狀緩解.csv」，則下拉選單會出現兩個選項。<br>
+          若只有 O1 出現，請也上傳 O2 對應的 CSV 檔案。
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">上傳 CSV / XLSX（可多檔，分析前可刪除）</label>
         <div class="file-drop" id="statsDrop"><input type="file" id="statsFilesInp" accept=".csv,.xlsx" multiple>
@@ -616,7 +622,7 @@ td input:focus{border-bottom-color:var(--teal)}
       <div class="chart-box"><div class="chart-title">📉 Leave-One-Out Sensitivity</div><div id="looPlot"></div></div>
       <div class="grid-2">
         <div class="chart-box"><div class="chart-title">📊 Baujat Plot</div><div id="baujatPlot"></div></div>
-        <div class="chart-box"><div class="chart-title">🌪️ Funnel Plot</div><div id="funnelPlot2"></div></div>
+        <div class="chart-box"><div class="chart-title">🌪️ Funnel Plot</div><div id="funnelPlot"></div></div>
       </div>
       <div class="chart-box"><div class="chart-title">🔍 Influence Diagnostics (8 panels)</div><div id="inflPlot"></div></div>
     </div>
@@ -2450,9 +2456,10 @@ class MetaEngine{
         const seDel=Math.sqrt(1/sumWR);
         const hat=row.weight/100;
         const rstud=(row.TE-res.TE_pooled)/Math.sqrt(row.seTE**2+res.tau2);
-        return{study:row['Study ID']||`Study ${idx+1}`,TE:row.TE,rstudent:rstud,
+        return{study:row['Study ID']||`Study ${idx+1}`,TE:row.TE,seTE:row.seTE,
+          rstudent:rstud,
           dffits:hat<1?Math.sqrt(hat/(1-hat))*rstud:0,cookD:hat<1?(rstud**2*hat)/(1-hat):0,
-          covR:seDel**2/(res.seTE_pooled**2||1),tau2del:tau2,hat,weight:row.weight,
+          covR:seDel**2/(res.seTE_pooled**2||1),tau2del:tau2,QEdel:Q,hat,weight:row.weight,
           teDel,lDel:teDel-1.96*seDel,uDel:teDel+1.96*seDel};
       }catch{return null;}
     }).filter(Boolean);
@@ -2899,7 +2906,13 @@ document.getElementById('btnStats').addEventListener('click',()=>{
         <div class="sv">${ma.res.Q.toFixed(2)}</div>
         <div class="ss">p = ${ma.res.p_Q.toFixed(4)} · ${ma.df.length} studies</div></div>`;
     document.getElementById('statsResults').style.display='block';
-    setTimeout(()=>{renderForest(ma);renderFunnel(ma);renderBaujat(ma);renderLoo(ma);renderInfl(ma);},60);
+    setTimeout(()=>{
+      const charts=[['renderForest',renderForest],['renderFunnel',renderFunnel],
+                    ['renderBaujat',renderBaujat],['renderLoo',renderLoo],['renderInfl',renderInfl]];
+      charts.forEach(([name,fn])=>{
+        try{fn(ma);}catch(e){console.error(name+' failed:',e);}
+      });
+    },80);
     notify(`分析完成：${ma.df.length} 篇研究 ✓`,'success');
   }catch(e){notify('分析失敗: '+e.message,'error');console.error(e);}
   btn.disabled=false;sp.style.display='none';
