@@ -419,22 +419,48 @@ td input:focus{border-bottom-color:var(--teal)}
   <!-- ══ TAB 2: SCREEN ══ -->
   <div id="tab-screen" class="tab-pane">
     <div class="card">
-      <div class="card-head"><div class="ci ci-teal">📥</div><div class="cht"><h2>PMID 智能篩選</h2><p>並行 AI 批次篩選，速度更快</p></div></div>
-      <div class="info-box"><span>ℹ️</span> 請先完成 Step 1 PICO 設定。篩選採批次並行，速度比單篇逐一快 3–5 倍。</div>
-      <div class="warn-box" style="margin-bottom:13px"><span>📌</span>
-        <div style="font-size:13px;line-height:1.7">
-          <b>PubMed 與 MEDLINE 都使用 PMID 識別文章：</b><br>
-          MEDLINE 是 PubMed 的子集，所有 MEDLINE 記錄都有 PMID。<br>
-          • <b>PubMed 搜到的文章</b>：直接帶入 PMID。<br>
-          • <b>MEDLINE (Ovid) 搜到的文章</b>：Ovid 中稱 <b>UI</b>（Unique Identifier），數值與 PMID 完全相同。<br>
-          • <b>MEDLINE (EBSCO) 搜到的文章</b>：AN（Accession Number）格式如 <code style="font-family:monospace;font-size:12px;background:rgba(0,0,0,.08);padding:1px 5px;border-radius:3px">MEDLINE:12345678</code>，取後面數字即為 PMID。<br>
-          → 無論哪個資料庫，統一貼入 PMID 即可開始 AI 篩選。
+      <div class="card-head"><div class="ci ci-teal">📥</div><div class="cht"><h2>智能篩選</h2><p>彙整 PubMed + MEDLINE 搜尋結果，合併去重後批次 AI 篩選</p></div></div>
+
+      <!-- Two result pools side by side -->
+      <div class="grid-2" style="margin-bottom:14px">
+        <!-- PubMed pool -->
+        <div style="background:var(--teal-lt);border:1.5px solid var(--teal);border-radius:var(--r-sm);padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+            <div style="font-size:13px;font-weight:700;color:var(--teal-dk)">🔵 PubMed 搜尋結果</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="badge b-teal" id="pubmedPoolCount">0 篇</span>
+              <button class="btn btn-ghost btn-sm" id="btnClearPubmed" style="padding:3px 9px;font-size:12px">清除</button>
+            </div>
+          </div>
+          <textarea id="pubmedPoolInput" rows="3"
+            style="font-family:'DM Mono',monospace;font-size:12px;resize:vertical;min-height:60px;background:#fff;border-color:var(--teal)"
+            placeholder="Step 1 搜尋後自動填入，或手動貼入 PMID…"></textarea>
+        </div>
+        <!-- MEDLINE pool -->
+        <div style="background:var(--amber-lt);border:1.5px solid var(--amber-mid);border-radius:var(--r-sm);padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+            <div style="font-size:13px;font-weight:700;color:var(--amber)">🟠 MEDLINE 搜尋結果</div>
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="badge b-amber" id="medlinePoolCount">0 篇</span>
+              <button class="btn btn-ghost btn-sm" id="btnClearMedline" style="padding:3px 9px;font-size:12px">清除</button>
+            </div>
+          </div>
+          <textarea id="medlinePoolInput" rows="3"
+            style="font-family:'DM Mono',monospace;font-size:12px;resize:vertical;min-height:60px;background:#fff;border-color:var(--amber-mid)"
+            placeholder="Step 1 MEDLINE 搜尋後自動填入，或手動貼入 PMID…"></textarea>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">PubMed PMIDs（逗號或換行分隔）</label>
-        <textarea id="pmidInput" rows="5" placeholder="16490324, 16380290, 10793055&#10;可貼上多個 PMID…"></textarea>
+
+      <!-- Merge summary -->
+      <div id="mergeSummary" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text3)">合併去重後：</span>
+        <span class="badge b-teal" id="mergedCount">0 篇</span>
+        <span style="font-size:12px;color:var(--text3)" id="mergeDetail"></span>
+        <button class="btn btn-ghost btn-sm" id="btnRefreshMerge" style="margin-left:auto">🔄 重新計算</button>
       </div>
+
+      <!-- Hidden combined input kept for backward compat -->
+      <input type="hidden" id="pmidInput">
       <!-- Batch size selector -->
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
         <label style="font-size:13px;font-weight:600;color:var(--text2)">每批篩選篇數：</label>
@@ -1346,10 +1372,14 @@ async function doEsearch(query, retmax, db='pubmed') {
 }
 
 function populateStep2(pmids, source, total) {
-  const existing = document.getElementById('pmidInput').value.trim();
-  const existingList = existing ? existing.split(',').map(s=>s.trim()).filter(s=>s) : [];
+  // Route PMIDs into the correct pool textarea
+  const inputId = source === 'MEDLINE' ? 'medlinePoolInput' : 'pubmedPoolInput';
+  const el = document.getElementById(inputId);
+  const existing = el.value.trim();
+  const existingList = existing ? existing.split(/[\s,]+/).map(s=>s.trim()).filter(s=>s) : [];
   const merged = [...new Set([...existingList, ...pmids])];
-  document.getElementById('pmidInput').value = merged.join(', ');
+  el.value = merged.join(', ');
+  refreshMergeSummary();
   setTimeout(()=>{
     document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
@@ -1357,8 +1387,26 @@ function populateStep2(pmids, source, total) {
     document.getElementById('tab-screen').classList.add('active');
     document.getElementById('page-title').textContent='文獻篩選';
     document.getElementById('stepPill').textContent='Step 2 / 5';
-    notify(`【${source}】已帶入 ${pmids.length} 篇（共命中 ${total} 篇）→ Step 2 ✓`,'success',5000);
-  }, 500);
+    notify(`【${source}】${pmids.length} 篇已加入搜尋池（共命中 ${total} 篇）✓`, 'success', 5000);
+  }, 400);
+}
+
+function parsePmidField(val) {
+  return [...new Set(val.split(/[\s,;\n]+/).map(s=>s.trim()).filter(s=>/^\d+$/.test(s)))];
+}
+
+function refreshMergeSummary() {
+  const p = parsePmidField(document.getElementById('pubmedPoolInput').value);
+  const m = parsePmidField(document.getElementById('medlinePoolInput').value);
+  document.getElementById('pubmedPoolCount').textContent = p.length + ' 篇';
+  document.getElementById('medlinePoolCount').textContent = m.length + ' 篇';
+  const merged = [...new Set([...p, ...m])];
+  document.getElementById('mergedCount').textContent = merged.length + ' 篇';
+  const overlap = p.filter(id => m.includes(id)).length;
+  document.getElementById('mergeDetail').textContent =
+    p.length && m.length
+      ? `PubMed ${p.length} + MEDLINE ${m.length}，重複 ${overlap} 篇，去重後 ${merged.length} 篇`
+      : `（請從 Step 1 搜尋，或手動貼入 PMID）`;
 }
 
 document.getElementById('btnPubmedSearch').addEventListener('click', async()=>{
@@ -1428,20 +1476,23 @@ async function fetchPubmed(pmids){
 function parseMedline(txt){
   return txt.split(/\n(?=PMID- )/).map(rec=>{
     const lines = rec.split('\n');
-    // MEDLINE wraps long fields — continuation lines start with 6 spaces
+    // MEDLINE tag format: TAG padded to 4 chars + "- " + value
+    // e.g. "PMID- 123", "TI  - Title", "AB  - Abstract", "FAU - Name"
+    // Continuation lines start with 6 spaces
     const fields = {};
     let lastTag = null;
     for (const line of lines) {
-      const m = line.match(/^([A-Z]{2,4}\d*  - )(.*)/);
+      // Match any 1-4 uppercase chars, then optional spaces, then "- "
+      const m = line.match(/^([A-Z][A-Z0-9]{0,3}\s*- )(.*)/);
       if (m) {
         lastTag = m[1];
         fields[lastTag] = (fields[lastTag] ? fields[lastTag]+' ' : '') + m[2].trim();
-      } else if (lastTag && line.startsWith('      ')) {
+      } else if (lastTag && (line.startsWith('      ') || line.startsWith('\t'))) {
         fields[lastTag] = (fields[lastTag]||'') + ' ' + line.trim();
       }
     }
-    const g  = p  => (fields[p]||'').trim();
-    const ga = p  => lines.filter(ln=>ln.startsWith(p)).map(ln=>ln.slice(p.length).trim());
+    const g  = p => (fields[p]||'').trim();
+    const ga = p => lines.filter(ln=>ln.startsWith(p)).map(ln=>ln.slice(p.length).trim());
     const pmid  = g('PMID- ');
     const title = g('TI  - ');
     const ab    = g('AB  - ');
@@ -1451,6 +1502,25 @@ function parseMedline(txt){
     return { pmid, title, abstract:ab, year, firstAuthor:fa, studyId:`${fa} ${year}` };
   }).filter(r=>r.pmid);
 }
+
+// ── Pool textarea listeners ──
+(function initPools(){
+  ['pubmedPoolInput','medlinePoolInput'].forEach(id => {
+    document.addEventListener('input', e => { if(e.target?.id===id) refreshMergeSummary(); });
+  });
+  document.getElementById('btnClearPubmed').addEventListener('click', ()=>{
+    document.getElementById('pubmedPoolInput').value='';
+    refreshMergeSummary();
+    notify('PubMed 搜尋池已清除','info',2000);
+  });
+  document.getElementById('btnClearMedline').addEventListener('click', ()=>{
+    document.getElementById('medlinePoolInput').value='';
+    refreshMergeSummary();
+    notify('MEDLINE 搜尋池已清除','info',2000);
+  });
+  document.getElementById('btnRefreshMerge').addEventListener('click', ()=>refreshMergeSummary());
+  refreshMergeSummary();
+})();
 
 // ── Screening state ──
 let SCREEN_ABORT = false;        // stop flag
@@ -1473,10 +1543,11 @@ document.querySelectorAll('.batch-sz-btn').forEach(b => {
 });
 
 document.getElementById('btnScreen').addEventListener('click', async () => {
-  const raw = $v('pmidInput');
-  if (!raw) return notify('請輸入 PMID','warn');
-  const pmids = raw.replace(/\n/g,',').split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s));
-  if (!pmids.length) return notify('找不到有效 PMID','error');
+  // Merge both pools + deduplicate
+  const p1 = parsePmidField(document.getElementById('pubmedPoolInput').value);
+  const p2 = parsePmidField(document.getElementById('medlinePoolInput').value);
+  const pmids = [...new Set([...p1, ...p2])];
+  if (!pmids.length) return notify('請先從 Step 1 搜尋，或在搜尋池中手動貼入 PMID','warn');
 
   // Reset
   SCREEN_ABORT = false;
