@@ -1531,7 +1531,7 @@ async function runScreenBatch(pico, bar, stat) {
     `You are a systematic review screener.
 PICO: P:${pico.p||'N/A'}, I:${pico.i||'N/A'}, C:${pico.c||'N/A'}, O:${pico.o1||'N/A'}
 Respond ONLY with exactly 7 values separated by " | ":
-INCLUDED or EXCLUDED | Reason in 繁體中文 (1-2 sentences) | Study Design | Population | Intervention | Control | Outcomes
+INCLUDED or EXCLUDED | Detailed reason in 繁體中文 (explain: ①研究設計是否符合、②研究對象是否符合、③介入措施是否符合、④結果指標是否符合、⑤最終判斷) | Study Design | Population | Intervention | Control | Outcomes
 Title: ${a.title}
 Abstract: ${(a.abstract||'').substring(0,600)}`);
 
@@ -1548,7 +1548,7 @@ Abstract: ${(a.abstract||'').substring(0,600)}`);
       subBatch.push({ i: idx, p: prompts[idx] });
     }
     await Promise.all(subBatch.map(async ({ i, p }) => {
-      try { aiResults[i] = await gemini(p, 400); }
+      try { aiResults[i] = await gemini(p, 700); }
       catch(e) { aiResults[i] = 'ERROR:' + e.message; }
     }));
     // Update progress
@@ -1636,13 +1636,44 @@ function renderScreenResults(results,filter){
   if(!list.length){el.innerHTML='<div class="card" style="text-align:center;color:var(--text3);padding:30px">無符合條件的結果</div>';return;}
   el.innerHTML=list.map(r=>{
     const inc=r.status==='INCLUDED';
-    const det=inc?`<div class="sc-det">🔬 ${r.design||'-'} · 👥 ${r.population||'-'} · 💉 ${r.intervention||'-'}</div>`:'';
-    return `<div class="sc-card ${inc?'included':'excluded'}">
-      <div><div class="sc-pmid"><a href="https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/" target="_blank" rel="noopener" title="在 PubMed 開啟" style="color:var(--teal);text-decoration:none">PMID ${r.pmid} ↗</a></div>
-        <span class="badge ${inc?'b-green':'b-gray'}" style="margin-top:5px">${inc?'✓ 納入':'✗ 排除'}</span>
-        <div style="font-size:11px;color:var(--text4);margin-top:3px">${r.studyId}</div></div>
-      <div><div class="sc-title">${r.title||'(no title)'}</div>
-        <div class="sc-reason">📝 ${r.reason}</div>${det}</div></div>`;
+    const borderColor = inc ? '#059669' : '#d1d5db';
+    const statusBg    = inc ? '#d1fae5' : '#f3f4f6';
+    const statusColor = inc ? '#047857' : '#6b7280';
+    const statusText  = inc ? '✓ 建議納入' : '✗ 建議排除';
+
+    // Detail chips (only if data exists)
+    const chips = [
+      r.design      && `<span style="background:#e0f5f9;color:#0369a1;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">🔬 ${r.design}</span>`,
+      r.population  && `<span style="background:#fef3c7;color:#92400e;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">👥 ${r.population}</span>`,
+      r.intervention&& `<span style="background:#ede9fe;color:#5b21b6;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">💉 ${r.intervention}</span>`,
+      r.control     && `<span style="background:#fce7f3;color:#9d174d;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">🆚 ${r.control}</span>`,
+      r.outcomes    && `<span style="background:#ecfdf5;color:#065f46;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">📊 ${r.outcomes}</span>`,
+    ].filter(Boolean).join('');
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${borderColor};border-radius:var(--r-sm);padding:0;margin-bottom:10px;box-shadow:var(--sh);overflow:hidden">
+      <!-- Header row -->
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:${inc?'#f0fdf4':'#fafafa'}">
+        <a href="https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/" target="_blank" rel="noopener"
+           style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--teal);text-decoration:none;white-space:nowrap">
+          PMID ${r.pmid} ↗
+        </a>
+        <span style="background:${statusBg};color:${statusColor};font-size:11.5px;font-weight:700;padding:3px 11px;border-radius:20px;letter-spacing:.03em">${statusText}</span>
+        <span style="font-size:12px;color:var(--text3);margin-left:auto">${r.studyId||''}</span>
+      </div>
+      <!-- Title -->
+      <div style="padding:10px 14px 4px;font-size:14px;font-weight:600;color:var(--text);line-height:1.4">
+        ${r.title||'(no title)'}
+      </div>
+      <!-- Detail chips -->
+      ${chips ? `<div style="padding:4px 14px 8px;display:flex;flex-wrap:wrap;gap:5px">${chips}</div>` : ''}
+      <!-- Reason box -->
+      <div style="margin:0 14px 12px;background:${inc?'#f0fdf4':'#f9fafb'};border:1px solid ${inc?'#a7f3d0':'#e5e7eb'};border-radius:6px;padding:10px 13px">
+        <div style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${inc?'#047857':'#6b7280'};margin-bottom:5px">
+          ${inc ? '📋 納入理由' : '📋 排除理由'}
+        </div>
+        <div style="font-size:13.5px;color:var(--text2);line-height:1.75;white-space:pre-line">${r.reason||'（無說明）'}</div>
+      </div>
+    </div>`;
   }).join('');
 }
 
