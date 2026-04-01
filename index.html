@@ -435,16 +435,34 @@ td input:focus{border-bottom-color:var(--teal)}
         <label class="form-label">PubMed PMIDs（逗號或換行分隔）</label>
         <textarea id="pmidInput" rows="5" placeholder="16490324, 16380290, 10793055&#10;可貼上多個 PMID…"></textarea>
       </div>
+      <!-- Batch size selector -->
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+        <label style="font-size:13px;font-weight:600;color:var(--text2)">每批篩選篇數：</label>
+        <div style="display:flex;gap:6px">
+          <button class="batch-sz-btn btn btn-ghost btn-sm" data-sz="50">50 篇</button>
+          <button class="batch-sz-btn btn btn-primary btn-sm active-sz" data-sz="100">100 篇</button>
+          <button class="batch-sz-btn btn btn-ghost btn-sm" data-sz="200">200 篇</button>
+          <button class="batch-sz-btn btn btn-ghost btn-sm" data-sz="0">全部</button>
+        </div>
+        <span style="font-size:12px;color:var(--text3)" id="batchSzNote">每次處理 100 篇，完成後可繼續下一批</span>
+      </div>
+      <!-- Action buttons -->
       <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap">
         <button class="btn btn-primary" id="btnScreen"><span class="spin" id="spScreen" style="display:none"></span>🚀 開始智能篩選</button>
-        <div id="screenCounts" style="display:none;display:flex;gap:7px">
+        <button class="btn btn-danger btn-sm" id="btnStopScreen" style="display:none">⏹ 停止篩選</button>
+        <button class="btn btn-outline btn-sm" id="btnNextBatch" style="display:none"><span class="spin" id="spNextBatch" style="display:none"></span>▶ 繼續下一批</button>
+        <div id="screenCounts" style="display:flex;gap:7px;visibility:hidden">
           <span class="badge b-green" id="cntIncl">✓ 0 納入</span>
           <span class="badge b-gray" id="cntExcl">✗ 0 排除</span>
+          <span class="badge b-teal" id="cntTotal" style="display:none"></span>
         </div>
       </div>
       <div id="screenProg" style="display:none;margin-top:11px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <div class="prog-lbl" id="screenStat">準備中…</div>
+          <div class="prog-lbl" id="screenBatchInfo" style="color:var(--teal-dk);font-weight:600"></div>
+        </div>
         <div class="prog-wrap"><div class="prog-bar" id="screenBar" style="width:0%"></div></div>
-        <div class="prog-lbl" id="screenStat">準備中…</div>
       </div>
     </div>
     <!-- Filter bar -->
@@ -1418,60 +1436,182 @@ function parseMedline(txt){
   }).filter(r=>r.pmid);
 }
 
-document.getElementById('btnScreen').addEventListener('click',async()=>{
-  const raw=$v('pmidInput');
-  if(!raw) return notify('請輸入 PMID','warn');
-  const pmids=raw.replace(/\n/g,',').split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s));
-  if(!pmids.length) return notify('找不到有效 PMID','error');
-  const pico=getPico();
-  const btn=document.getElementById('btnScreen'),sp=document.getElementById('spScreen');
-  const prog=document.getElementById('screenProg'),bar=document.getElementById('screenBar'),stat=document.getElementById('screenStat');
-  btn.disabled=true;sp.style.display='inline-block';prog.style.display='block';
-  document.getElementById('screenFilterBar').style.display='none';
-  document.getElementById('screenList').innerHTML='';
-  S.screeningResults=[];
-  try{
-    stat.textContent=`抓取 ${pmids.length} 篇 PubMed 摘要…`;bar.style.width='5%';
-    const medline=await fetchPubmed(pmids);
-    const arts=parseMedline(medline);
-    if(!arts.length){notify('無法解析 PubMed 資料','error');return;}
-    stat.textContent=`並行 AI 篩選 ${arts.length} 篇…`;bar.style.width='15%';
+// ── Screening state ──
+let SCREEN_ABORT = false;        // stop flag
+let SCREEN_PENDING_ARTS = [];    // articles not yet screened
+let SCREEN_BATCH_SIZE = 100;     // user-chosen batch size
 
-    // Build all prompts at once, then batch-run for speed (FIX 2)
-    const prompts=arts.map(a=>
-      `You are a systematic review screener.
+// Batch size buttons
+document.querySelectorAll('.batch-sz-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.batch-sz-btn').forEach(x => {
+      x.className = x.className.replace('btn-primary','btn-ghost').replace('active-sz','');
+    });
+    b.className = b.className.replace('btn-ghost','btn-primary') + ' active-sz';
+    SCREEN_BATCH_SIZE = +b.dataset.sz;
+    const note = document.getElementById('batchSzNote');
+    note.textContent = SCREEN_BATCH_SIZE === 0
+      ? '將一次篩選所有文章（較慢）'
+      : `每次處理 ${SCREEN_BATCH_SIZE} 篇，完成後可繼續下一批`;
+  });
+});
+
+document.getElementById('btnScreen').addEventListener('click', async () => {
+  const raw = $v('pmidInput');
+  if (!raw) return notify('請輸入 PMID','warn');
+  const pmids = raw.replace(/\n/g,',').split(',').map(s=>s.trim()).filter(s=>/^\d+$/.test(s));
+  if (!pmids.length) return notify('找不到有效 PMID','error');
+
+  // Reset
+  SCREEN_ABORT = false;
+  S.screeningResults = [];
+  SCREEN_PENDING_ARTS = [];
+  document.getElementById('screenList').innerHTML = '';
+  document.getElementById('screenFilterBar').style.display = 'none';
+  document.getElementById('screenCounts').style.visibility = 'hidden';
+  document.getElementById('btnNextBatch').style.display = 'none';
+
+  const pico = getPico();
+  const btn = document.getElementById('btnScreen'), sp = document.getElementById('spScreen');
+  const prog = document.getElementById('screenProg'), bar = document.getElementById('screenBar'), stat = document.getElementById('screenStat');
+  btn.disabled = true; sp.style.display = 'inline-block'; prog.style.display = 'block';
+  document.getElementById('btnStopScreen').style.display = 'inline-flex';
+
+  try {
+    stat.textContent = `正在從 PubMed 抓取 ${pmids.length} 篇摘要…`; bar.style.width = '5%';
+    const medline = await fetchPubmed(pmids);
+    const arts = parseMedline(medline);
+    if (!arts.length) { notify('無法解析 PubMed 資料','error'); return; }
+
+    SCREEN_PENDING_ARTS = [...arts];
+    await runScreenBatch(pico, bar, stat);
+  } catch(e) { notify(e.message,'error'); }
+
+  btn.disabled = false; sp.style.display = 'none';
+  if (!SCREEN_ABORT) document.getElementById('btnStopScreen').style.display = 'none';
+});
+
+// Stop button
+document.getElementById('btnStopScreen').addEventListener('click', () => {
+  SCREEN_ABORT = true;
+  notify('正在停止篩選，等待目前這批完成…','warn', 3000);
+  document.getElementById('btnStopScreen').disabled = true;
+});
+
+// Next batch button
+document.getElementById('btnNextBatch').addEventListener('click', async () => {
+  if (!SCREEN_PENDING_ARTS.length) return notify('所有文章已篩選完畢','info');
+  SCREEN_ABORT = false;
+  document.getElementById('btnStopScreen').disabled = false;
+  document.getElementById('btnNextBatch').style.display = 'none';
+  document.getElementById('btnStopScreen').style.display = 'inline-flex';
+  document.getElementById('screenProg').style.display = 'block';
+  const pico = getPico();
+  const bar = document.getElementById('screenBar'), stat = document.getElementById('screenStat');
+  const sp2 = document.getElementById('spNextBatch');
+  sp2.style.display = 'inline-block';
+  await runScreenBatch(pico, bar, stat);
+  sp2.style.display = 'none';
+});
+
+// Core batch screening function
+async function runScreenBatch(pico, bar, stat) {
+  const batchSize = SCREEN_BATCH_SIZE === 0 ? SCREEN_PENDING_ARTS.length : SCREEN_BATCH_SIZE;
+  const batch = SCREEN_PENDING_ARTS.splice(0, batchSize);
+  const totalPending = SCREEN_PENDING_ARTS.length;
+  const alreadyDone = S.screeningResults.length;
+  const grandTotal = alreadyDone + batch.length + totalPending;
+  const batchInfo = document.getElementById('screenBatchInfo');
+
+  batchInfo.textContent = `本批 ${batch.length} 篇，已完成 ${alreadyDone}，剩餘 ${totalPending} 篇`;
+  stat.textContent = `並行 AI 篩選中（本批 ${batch.length} 篇）…`;
+  bar.style.width = '10%';
+
+  const prompts = batch.map(a =>
+    `You are a systematic review screener.
 PICO: P:${pico.p||'N/A'}, I:${pico.i||'N/A'}, C:${pico.c||'N/A'}, O:${pico.o1||'N/A'}
 Respond ONLY with exactly 7 values separated by " | ":
 INCLUDED or EXCLUDED | Reason in 繁體中文 (1-2 sentences) | Study Design | Population | Intervention | Control | Outcomes
 Title: ${a.title}
 Abstract: ${(a.abstract||'').substring(0,600)}`);
 
-    // Run in batches of 5 concurrently
-    const aiResults=await batchGemini(prompts,400,5);
-    bar.style.width='90%';
+  // Run with abort awareness: process in sub-batches of 5, check abort between each
+  const aiResults = new Array(batch.length).fill(null);
+  const CONCUR = 5;
+  let idx = 0;
+  let aborted = false;
 
-    const results=arts.map((a,i)=>{
-      const raw=aiResults[i]||'';
-      if(raw.startsWith('ERROR:')){return{...a,status:'ERROR',reason:raw.slice(6),design:'',population:'',intervention:'',control:'',outcomes:''};}
-      const parts=raw.trim().split('|').map(s=>s.trim());
-      return{...a,
-        status:parts[0]?.toUpperCase().includes('INCL')?'INCLUDED':'EXCLUDED',
-        reason:parts[1]||'',design:parts[2]||'',population:parts[3]||'',
-        intervention:parts[4]||'',control:parts[5]||'',outcomes:parts[6]||''};
-    });
-    bar.style.width='100%';
-    S.screeningResults=results;
-    renderScreenResults(results,'all');
-    const inc=results.filter(r=>r.status==='INCLUDED').length;
-    const exc=results.filter(r=>r.status!=='INCLUDED').length;
-    document.getElementById('cntIncl').textContent=`✓ ${inc} 納入`;
-    document.getElementById('cntExcl').textContent=`✗ ${exc} 排除`;
-    document.getElementById('screenCounts').style.display='flex';
-    document.getElementById('screenFilterBar').style.display='flex';
-    notify(`篩選完成：${inc} 納入，${exc} 排除`,'success',4000);
-  }catch(e){notify(e.message,'error');}
-  btn.disabled=false;sp.style.display='none';
-});
+  while (idx < batch.length) {
+    if (SCREEN_ABORT) { aborted = true; break; }
+    const subBatch = [];
+    for (let k = 0; k < CONCUR && idx < batch.length; k++, idx++) {
+      subBatch.push({ i: idx, p: prompts[idx] });
+    }
+    await Promise.all(subBatch.map(async ({ i, p }) => {
+      try { aiResults[i] = await gemini(p, 400); }
+      catch(e) { aiResults[i] = 'ERROR:' + e.message; }
+    }));
+    // Update progress
+    const pct = 10 + (idx / batch.length) * 85;
+    bar.style.width = pct + '%';
+    stat.textContent = `篩選中：${Math.min(idx, batch.length)} / ${batch.length} 篇（本批）`;
+    batchInfo.textContent = `已完成 ${alreadyDone + idx} / ${grandTotal} 篇`;
+  }
+
+  // Parse results for the processed portion
+  const processed = aborted ? batch.slice(0, idx) : batch;
+  const newResults = processed.map((a, i) => {
+    const raw = aiResults[i] || '';
+    if (raw.startsWith('ERROR:')) return { ...a, status:'ERROR', reason:raw.slice(6), design:'', population:'', intervention:'', control:'', outcomes:'' };
+    const parts = raw.trim().split('|').map(s => s.trim());
+    return { ...a,
+      status: parts[0]?.toUpperCase().includes('INCL') ? 'INCLUDED' : 'EXCLUDED',
+      reason: parts[1]||'', design: parts[2]||'', population: parts[3]||'',
+      intervention: parts[4]||'', control: parts[5]||'', outcomes: parts[6]||'' };
+  });
+
+  // If aborted, push back the unprocessed articles
+  if (aborted) {
+    const unprocessed = batch.slice(idx);
+    SCREEN_PENDING_ARTS = [...unprocessed, ...SCREEN_PENDING_ARTS];
+    notify(`篩選已停止，已完成 ${processed.length} 篇，剩餘 ${SCREEN_PENDING_ARTS.length} 篇未篩選`, 'warn', 5000);
+  }
+
+  S.screeningResults = [...S.screeningResults, ...newResults];
+  bar.style.width = '100%';
+
+  // Update counts
+  const inc = S.screeningResults.filter(r => r.status === 'INCLUDED').length;
+  const exc = S.screeningResults.filter(r => r.status !== 'INCLUDED').length;
+  document.getElementById('cntIncl').textContent = `✓ ${inc} 納入`;
+  document.getElementById('cntExcl').textContent = `✗ ${exc} 排除`;
+  const cntTotal = document.getElementById('cntTotal');
+  cntTotal.style.display = 'inline-flex';
+  cntTotal.textContent = `共篩選 ${S.screeningResults.length} / ${grandTotal} 篇`;
+  document.getElementById('screenCounts').style.visibility = 'visible';
+  document.getElementById('screenFilterBar').style.display = 'flex';
+  setActiveFilter('all');
+  renderScreenResults(S.screeningResults, 'all');
+
+  // Show appropriate follow-up buttons
+  document.getElementById('btnStopScreen').style.display = 'none';
+  document.getElementById('btnStopScreen').disabled = false;
+  SCREEN_ABORT = false;
+
+  if (SCREEN_PENDING_ARTS.length > 0) {
+    document.getElementById('btnNextBatch').style.display = 'inline-flex';
+    document.getElementById('screenProg').style.display = 'block';
+    stat.textContent = `本批完成！剩餘 ${SCREEN_PENDING_ARTS.length} 篇尚未篩選`;
+    batchInfo.textContent = `已完成 ${S.screeningResults.length} / ${grandTotal} 篇`;
+    bar.style.width = `${(S.screeningResults.length / grandTotal) * 100}%`;
+    notify(`本批 ${processed.length} 篇完成（${inc} 納入 / ${exc} 排除），還有 ${SCREEN_PENDING_ARTS.length} 篇，點「▶ 繼續下一批」`, 'info', 6000);
+  } else {
+    document.getElementById('btnNextBatch').style.display = 'none';
+    document.getElementById('screenProg').style.display = 'none';
+    notify(`全部篩選完畢 ✓  ${inc} 篇納入 / ${exc} 篇排除`, 'success', 4000);
+  }
+}
+
 
 // FIX 2: Filter buttons
 document.getElementById('filterAll').addEventListener('click',()=>{
