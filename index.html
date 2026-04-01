@@ -710,8 +710,15 @@ async function gemini(prompt,maxTok=2000){
       if(r.status===429){await sleep(3000);continue;}
       if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error?.message||`API error ${r.status}`);}
       const d=await r.json();
-      const txt=d.candidates?.[0]?.content?.parts?.[0]?.text;
-      if(!txt) throw new Error('AI 回傳空白');
+      // Gemini 2.5 Flash may return multiple parts (thinking + text)
+      // Find the first part that has a non-empty .text field
+      const parts = d.candidates?.[0]?.content?.parts || [];
+      const txt = parts.map(p=>p.text||'').filter(t=>t.trim()).join('');
+      if(!txt) {
+        // Log the raw response for debugging
+        console.warn('Gemini empty response:', JSON.stringify(d).substring(0,300));
+        throw new Error('AI 回傳空白，請重試');
+      }
       return txt;
     }catch(e){if(attempt===1)throw e;await sleep(1500);}
   }
@@ -1939,8 +1946,8 @@ document.getElementById('btnRob').addEventListener('click',async()=>{
       const text=await readPdf(f,12);
       // Detect study type
       const typeRes=await gemini(`From this study text, is this a randomized controlled trial (RCT) or not?
-Reply with ONLY "RCT" or "NON-RCT". No other text.
-Text: ${text.substring(0,2000)}`,10);
+Reply with ONLY the word RCT or the words NON-RCT. Absolutely nothing else.
+Text: ${text.substring(0,2000)}`,80);
       const isRCT=typeRes.trim().toUpperCase()==='RCT';
 
       if(isRCT){
@@ -1958,8 +1965,8 @@ Rules:
 - Reasoning = brief 繁體中文 explanation (1 sentence)
 - No markdown, no extra lines
 
-Study text (first 8000 chars):
-${text.substring(0,8000)}`,1800);
+Study text (first 6000 chars):
+${text.substring(0,6000)}`,3000);
         res.trim().split('\n').filter(l=>l.includes('|')&&!l.toLowerCase().includes('studyid')).forEach(line=>{
           const cols=line.split('|').map(s=>s.trim());
           if(cols.length>=9){
@@ -1981,8 +1988,8 @@ Rules:
 - Reasoning = brief 繁體中文 explanation (1 sentence)
 - No markdown, no extra lines
 
-Study text:
-${text.substring(0,8000)}`,2000);
+Study text (first 6000 chars):
+${text.substring(0,6000)}`,3000);
         res.trim().split('\n').filter(l=>l.includes('|')&&!l.toLowerCase().includes('studyid')).forEach(line=>{
           const cols=line.split('|').map(s=>s.trim());
           if(cols.length>=11){
