@@ -1528,27 +1528,18 @@ async function runScreenBatch(pico, bar, stat) {
   bar.style.width = '10%';
 
   const prompts = batch.map(a =>
-    `You are a systematic review screener.
+    `You are a systematic review screener. Read the study below and decide INCLUDE or EXCLUDE based on the PICO criteria.
 
-PICO criteria:
-P: ${pico.p||'Not specified'}
-I: ${pico.i||'Not specified'}
-C: ${pico.c||'Not specified'}
-O: ${pico.o1||'Not specified'}${pico.o2 ? '; '+pico.o2 : ''}
+[PICO]
+P=${pico.p||'N/A'} | I=${pico.i||'N/A'} | C=${pico.c||'N/A'} | O=${pico.o1||'N/A'}${pico.o2?'; '+pico.o2:''}
 
+[STUDY]
 Title: ${a.title}
-Abstract: ${(a.abstract||'(no abstract)').substring(0,700)}
+Abstract: ${(a.abstract||'no abstract').substring(0,800)}
 
-Output EXACTLY 7 lines. Each line starts with its label and a colon.
-Do NOT wrap to the next line. Do NOT add blank lines. Do NOT add extra text.
-
-STATUS: INCLUDED or EXCLUDED (one word only)
-REASON: 繁體中文，2-3句話說明：(1)研究設計是否符合 (2)研究族群是否符合 (3)介入/結果是否符合 (4)最終決定。全部寫在這一行，不換行。
-DESIGN: one short phrase
-POPULATION: one short phrase
-INTERVENTION: one short phrase
-CONTROL: one short phrase
-OUTCOMES: one short phrase`);
+[YOUR RESPONSE - write exactly 2 lines, nothing else]
+Line 1 must be exactly: INCLUDED or EXCLUDED
+Line 2 must start with REASON: then write 80-120 繁體中文 characters explaining: 研究設計、研究族群、介入措施、結果指標各一句，最後一句給出結論。專有名詞可用英文。`);
 
 
   // Run with abort awareness: sub-batches of 5, check abort between each
@@ -1564,7 +1555,7 @@ OUTCOMES: one short phrase`);
       subBatch.push({ i: idx, p: prompts[idx] });
     }
     await Promise.all(subBatch.map(async ({ i, p }) => {
-      try { aiResults[i] = await gemini(p, 500); }
+      try { aiResults[i] = await gemini(p, 600); }
       catch(e) { aiResults[i] = 'ERROR:' + e.message; }
     }));
     const pct = 10 + (idx / batch.length) * 85;
@@ -1573,28 +1564,61 @@ OUTCOMES: one short phrase`);
     batchInfo.textContent = `已完成 ${alreadyDone + idx} / ${grandTotal} 篇`;
   }
 
-  // Simple line-by-line parser — no regex, no multiline bugs
+  // Ultra-simple parser: line 1 = verdict, line 2 starts with REASON:
   function parseLabeledScreenResult(raw) {
-    const lines = raw.split('\n');
-    const fields = {};
+    const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+    // Find verdict: first line that is INCLUDED or EXCLUDED (or contains it)
+    let status = 'EXCLUDED';
+    let reasonLine = '';
+    let reasonFound = false;
+
     for (const line of lines) {
-      const colon = line.indexOf(':');
-      if (colon === -1) continue;
-      const label = line.substring(0, colon).trim().toUpperCase().replace(/\s+/g,'');
-      const value = line.substring(colon + 1).trim();
-      if (value) fields[label] = value;
+      const up = line.toUpperCase();
+
+      // Verdict detection
+      if (!reasonFound && (up === 'INCLUDED' || up === 'EXCLUDED')) {
+        status = up;
+        continue;
+      }
+      if (!reasonFound && up.startsWith('INCLUDED') && !up.startsWith('INCLUDED:')) {
+        status = 'INCLUDED'; continue;
+      }
+      if (!reasonFound && up.startsWith('EXCLUDED') && !up.startsWith('EXCLUDED:')) {
+        status = 'EXCLUDED'; continue;
+      }
+
+      // Reason line: starts with REASON: or is the second meaningful line
+      if (up.startsWith('REASON:')) {
+        reasonLine = line.substring(line.indexOf(':') + 1).trim();
+        reasonFound = true;
+        continue;
+      }
     }
-    // Also accept common variants
-    const get = (...keys) => { for (const k of keys) { if (fields[k]) return fields[k]; } return ''; };
-    const statusRaw = get('STATUS');
+
+    // Fallback: if no REASON: label found, use the longest non-verdict line
+    if (!reasonLine) {
+      const candidates = lines.filter(l => {
+        const u = l.toUpperCase();
+        return !u.match(/^(INCLUDED|EXCLUDED|DESIGN|POPULATION|INTERVENTION|CONTROL|OUTCOMES|STATUS|VERDICT)/) && l.length > 10;
+      });
+      reasonLine = candidates.sort((a,b) => b.length - a.length)[0] || '';
+    }
+
+    // Also extract optional metadata lines if present
+    const getField = (label) => {
+      const line = lines.find(l => l.toUpperCase().startsWith(label + ':'));
+      return line ? line.substring(label.length + 1).trim() : '';
+    };
+
     return {
-      status:       statusRaw.toUpperCase().includes('INCL') ? 'INCLUDED' : 'EXCLUDED',
-      reason:       get('REASON')       || '（AI 未提供理由）',
-      design:       get('DESIGN')       || '',
-      population:   get('POPULATION')   || '',
-      intervention: get('INTERVENTION') || '',
-      control:      get('CONTROL')      || '',
-      outcomes:     get('OUTCOMES')     || '',
+      status,
+      reason:       reasonLine || '（AI 未提供完整理由）',
+      design:       getField('DESIGN'),
+      population:   getField('POPULATION'),
+      intervention: getField('INTERVENTION'),
+      control:      getField('CONTROL'),
+      outcomes:     getField('OUTCOMES'),
     };
   }
 
