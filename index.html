@@ -1528,26 +1528,25 @@ async function runScreenBatch(pico, bar, stat) {
   bar.style.width = '10%';
 
   const prompts = batch.map(a =>
-    `You are an expert systematic review screener. Carefully assess this study against the PICO criteria.
+    `You are a systematic review screener. Assess whether to INCLUDE or EXCLUDE this study based on the PICO below.
 
-PICO inclusion criteria:
-- P (Population): ${pico.p||'Not specified'}
-- I (Intervention): ${pico.i||'Not specified'}
-- C (Comparison): ${pico.c||'Not specified'}
-- O (Outcome): ${pico.o1||'Not specified'}${pico.o2 ? '; '+pico.o2 : ''}
+PICO:
+P: ${pico.p||'Not specified'}
+I: ${pico.i||'Not specified'}
+C: ${pico.c||'Not specified'}
+O: ${pico.o1||'Not specified'}${pico.o2 ? '; '+pico.o2 : ''}
 
-Study to screen:
 Title: ${a.title}
-Abstract: ${(a.abstract||'(no abstract)').substring(0,900)}
+Abstract: ${(a.abstract||'(no abstract)').substring(0,700)}
 
-Reply using EXACTLY these labeled fields, each on its own line. Do NOT use pipe characters.
+Reply with EXACTLY these labeled lines:
 STATUS: [INCLUDED or EXCLUDED]
-REASON: [繁體中文 paragraph covering: ①研究設計（類型及是否符合納入標準）②研究對象（族群是否與P吻合，具體說明）③介入措施（是否符合I，具體說明）④比較組（是否符合C）⑤結果指標（是否報告O相關結果）⑥最終判斷。每個要點完整說明，不可省略或截斷。]
-DESIGN: [Study design, e.g. RCT, cohort, case-control, review, case report]
-POPULATION: [Brief description of study population]
-INTERVENTION: [Brief description of intervention]
-CONTROL: [Brief description of control/comparison]
-OUTCOMES: [Brief description of outcomes reported]`);
+REASON: [繁體中文，限100字以內。格式：①設計：一句話。②族群：一句話。③介入：一句話。④結果：一句話。⑤結論：一句話。]
+DESIGN: [study design]
+POPULATION: [population]
+INTERVENTION: [intervention]
+CONTROL: [control]
+OUTCOMES: [outcomes]`);
 
   // Run with abort awareness: sub-batches of 5, check abort between each
   const aiResults = new Array(batch.length).fill(null);
@@ -1562,7 +1561,7 @@ OUTCOMES: [Brief description of outcomes reported]`);
       subBatch.push({ i: idx, p: prompts[idx] });
     }
     await Promise.all(subBatch.map(async ({ i, p }) => {
-      try { aiResults[i] = await gemini(p, 1200); }
+      try { aiResults[i] = await gemini(p, 500); }
       catch(e) { aiResults[i] = 'ERROR:' + e.message; }
     }));
     const pct = 10 + (idx / batch.length) * 85;
@@ -1665,9 +1664,10 @@ function renderScreenResults(results,filter){
   function formatReason(text){
     if(!text||text==='（無說明）'||text==='（AI 未提供理由）')
       return `<span style="color:var(--text4);font-style:italic">${text||'（無說明）'}</span>`;
+    // Replace circled numbers with inline colored badges, keep on same flow
     return text
-      .replace(/([①②③④⑤⑥])/g,'<br><span style="display:inline-block;background:#e0f5f9;color:#0369a1;font-weight:700;font-size:13px;padding:1px 7px;border-radius:4px;margin:5px 0 2px">$1</span> ')
-      .replace(/^<br>/,'');
+      .replace(/([①②③④⑤⑥])/g, '<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:#0891b2;color:#fff;font-weight:700;font-size:11px;border-radius:50%;margin:0 3px 0 8px;flex-shrink:0;vertical-align:middle">$1</span>')
+      .replace(/^(<span[^>]*>①<\/span>)/,'$1'); // no leading space before first
   }
 
   el.innerHTML=list.map(r=>{
