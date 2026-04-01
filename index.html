@@ -1528,14 +1528,28 @@ async function runScreenBatch(pico, bar, stat) {
   bar.style.width = '10%';
 
   const prompts = batch.map(a =>
-    `You are a systematic review screener.
-PICO: P:${pico.p||'N/A'}, I:${pico.i||'N/A'}, C:${pico.c||'N/A'}, O:${pico.o1||'N/A'}
-Respond ONLY with exactly 7 values separated by " | ":
-INCLUDED or EXCLUDED | Detailed reason in 繁體中文 (explain: ①研究設計是否符合、②研究對象是否符合、③介入措施是否符合、④結果指標是否符合、⑤最終判斷) | Study Design | Population | Intervention | Control | Outcomes
-Title: ${a.title}
-Abstract: ${(a.abstract||'').substring(0,600)}`);
+    `You are an expert systematic review screener. Carefully assess this study against the PICO criteria.
 
-  // Run with abort awareness: process in sub-batches of 5, check abort between each
+PICO inclusion criteria:
+- P (Population): ${pico.p||'Not specified'}
+- I (Intervention): ${pico.i||'Not specified'}
+- C (Comparison): ${pico.c||'Not specified'}
+- O (Outcome): ${pico.o1||'Not specified'}${pico.o2 ? '; '+pico.o2 : ''}
+
+Study to screen:
+Title: ${a.title}
+Abstract: ${(a.abstract||'(no abstract)').substring(0,900)}
+
+Reply using EXACTLY these labeled fields, each on its own line. Do NOT use pipe characters.
+STATUS: [INCLUDED or EXCLUDED]
+REASON: [繁體中文 paragraph covering: ①研究設計（類型及是否符合納入標準）②研究對象（族群是否與P吻合，具體說明）③介入措施（是否符合I，具體說明）④比較組（是否符合C）⑤結果指標（是否報告O相關結果）⑥最終判斷。每個要點完整說明，不可省略或截斷。]
+DESIGN: [Study design, e.g. RCT, cohort, case-control, review, case report]
+POPULATION: [Brief description of study population]
+INTERVENTION: [Brief description of intervention]
+CONTROL: [Brief description of control/comparison]
+OUTCOMES: [Brief description of outcomes reported]`);
+
+  // Run with abort awareness: sub-batches of 5, check abort between each
   const aiResults = new Array(batch.length).fill(null);
   const CONCUR = 5;
   let idx = 0;
@@ -1548,26 +1562,39 @@ Abstract: ${(a.abstract||'').substring(0,600)}`);
       subBatch.push({ i: idx, p: prompts[idx] });
     }
     await Promise.all(subBatch.map(async ({ i, p }) => {
-      try { aiResults[i] = await gemini(p, 700); }
+      try { aiResults[i] = await gemini(p, 1200); }
       catch(e) { aiResults[i] = 'ERROR:' + e.message; }
     }));
-    // Update progress
     const pct = 10 + (idx / batch.length) * 85;
     bar.style.width = pct + '%';
     stat.textContent = `篩選中：${Math.min(idx, batch.length)} / ${batch.length} 篇（本批）`;
     batchInfo.textContent = `已完成 ${alreadyDone + idx} / ${grandTotal} 篇`;
   }
 
-  // Parse results for the processed portion
+  // Labeled-field parser — reason can be multi-line, no pipe needed
+  function parseLabeledScreenResult(raw) {
+    const getField = (label) => {
+      const re = new RegExp(`^${label}:\\s*([\\s\\S]*?)(?=\\n(?:STATUS|REASON|DESIGN|POPULATION|INTERVENTION|CONTROL|OUTCOMES):|$)`, 'im');
+      const m = raw.match(re);
+      return m ? m[1].trim() : '';
+    };
+    const statusRaw = getField('STATUS');
+    return {
+      status:       statusRaw.toUpperCase().includes('INCL') ? 'INCLUDED' : 'EXCLUDED',
+      reason:       getField('REASON')       || '（AI 未提供理由）',
+      design:       getField('DESIGN')       || '',
+      population:   getField('POPULATION')   || '',
+      intervention: getField('INTERVENTION') || '',
+      control:      getField('CONTROL')      || '',
+      outcomes:     getField('OUTCOMES')     || '',
+    };
+  }
+
   const processed = aborted ? batch.slice(0, idx) : batch;
   const newResults = processed.map((a, i) => {
     const raw = aiResults[i] || '';
     if (raw.startsWith('ERROR:')) return { ...a, status:'ERROR', reason:raw.slice(6), design:'', population:'', intervention:'', control:'', outcomes:'' };
-    const parts = raw.trim().split('|').map(s => s.trim());
-    return { ...a,
-      status: parts[0]?.toUpperCase().includes('INCL') ? 'INCLUDED' : 'EXCLUDED',
-      reason: parts[1]||'', design: parts[2]||'', population: parts[3]||'',
-      intervention: parts[4]||'', control: parts[5]||'', outcomes: parts[6]||'' };
+    return { ...a, ...parseLabeledScreenResult(raw) };
   });
 
   // If aborted, push back the unprocessed articles
@@ -1634,44 +1661,56 @@ function renderScreenResults(results,filter){
   if(filter==='excl') list=results.filter(r=>r.status!=='INCLUDED');
   const el=document.getElementById('screenList');
   if(!list.length){el.innerHTML='<div class="card" style="text-align:center;color:var(--text3);padding:30px">無符合條件的結果</div>';return;}
+
+  function formatReason(text){
+    if(!text||text==='（無說明）'||text==='（AI 未提供理由）')
+      return `<span style="color:var(--text4);font-style:italic">${text||'（無說明）'}</span>`;
+    return text
+      .replace(/([①②③④⑤⑥])/g,'<br><span style="display:inline-block;background:#e0f5f9;color:#0369a1;font-weight:700;font-size:13px;padding:1px 7px;border-radius:4px;margin:5px 0 2px">$1</span> ')
+      .replace(/^<br>/,'');
+  }
+
   el.innerHTML=list.map(r=>{
     const inc=r.status==='INCLUDED';
-    const borderColor = inc ? '#059669' : '#d1d5db';
-    const statusBg    = inc ? '#d1fae5' : '#f3f4f6';
-    const statusColor = inc ? '#047857' : '#6b7280';
-    const statusText  = inc ? '✓ 建議納入' : '✗ 建議排除';
+    const borderColor=inc?'#059669':'#9ca3af';
+    const headerBg=inc?'#f0fdf4':'#f9fafb';
+    const statusBg=inc?'#d1fae5':'#f3f4f6';
+    const statusColor=inc?'#047857':'#4b5563';
+    const statusText=inc?'✓ 建議納入':'✗ 建議排除';
+    const reasonBg=inc?'#f0fdf4':'#f9fafb';
+    const reasonBorder=inc?'#a7f3d0':'#e5e7eb';
+    const reasonLabel=inc?'📋 納入理由':'📋 排除理由';
+    const reasonLabelColor=inc?'#047857':'#4b5563';
 
-    // Detail chips (only if data exists)
-    const chips = [
-      r.design      && `<span style="background:#e0f5f9;color:#0369a1;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">🔬 ${r.design}</span>`,
-      r.population  && `<span style="background:#fef3c7;color:#92400e;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">👥 ${r.population}</span>`,
-      r.intervention&& `<span style="background:#ede9fe;color:#5b21b6;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">💉 ${r.intervention}</span>`,
-      r.control     && `<span style="background:#fce7f3;color:#9d174d;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">🆚 ${r.control}</span>`,
-      r.outcomes    && `<span style="background:#ecfdf5;color:#065f46;font-size:11.5px;padding:2px 9px;border-radius:20px;white-space:nowrap">📊 ${r.outcomes}</span>`,
-    ].filter(Boolean).join('');
+    const detailRows=[
+      r.design       &&['🔬 研究設計',r.design,      '#e0f5f9','#0369a1'],
+      r.population   &&['👥 研究族群',r.population,  '#fef3c7','#92400e'],
+      r.intervention &&['💉 介入措施',r.intervention,'#ede9fe','#5b21b6'],
+      r.control      &&['🆚 對照組',  r.control,     '#fce7f3','#9d174d'],
+      r.outcomes     &&['📊 結果指標',r.outcomes,    '#ecfdf5','#065f46'],
+    ].filter(Boolean);
 
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${borderColor};border-radius:var(--r-sm);padding:0;margin-bottom:10px;box-shadow:var(--sh);overflow:hidden">
-      <!-- Header row -->
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:${inc?'#f0fdf4':'#fafafa'}">
+    const detailHtml=detailRows.length?`
+      <div style="margin:0 14px 10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">
+        ${detailRows.map(([lbl,val,bg,clr])=>`
+          <div style="background:${bg};border-radius:6px;padding:7px 10px">
+            <div style="font-size:10.5px;font-weight:700;color:${clr};letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px">${lbl}</div>
+            <div style="font-size:13px;color:#1c1917;line-height:1.4">${val}</div>
+          </div>`).join('')}
+      </div>`:'';
+
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-left:4px solid ${borderColor};border-radius:var(--r-sm);margin-bottom:12px;box-shadow:var(--sh);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:${headerBg}">
         <a href="https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/" target="_blank" rel="noopener"
-           style="font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--teal);text-decoration:none;white-space:nowrap">
-          PMID ${r.pmid} ↗
-        </a>
-        <span style="background:${statusBg};color:${statusColor};font-size:11.5px;font-weight:700;padding:3px 11px;border-radius:20px;letter-spacing:.03em">${statusText}</span>
-        <span style="font-size:12px;color:var(--text3);margin-left:auto">${r.studyId||''}</span>
+           style="font-family:'DM Mono',monospace;font-size:12.5px;font-weight:700;color:var(--teal);text-decoration:none;white-space:nowrap">PMID ${r.pmid} ↗</a>
+        <span style="background:${statusBg};color:${statusColor};font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px">${statusText}</span>
+        <span style="font-size:12px;color:var(--text3);margin-left:auto;font-style:italic">${r.studyId||''}</span>
       </div>
-      <!-- Title -->
-      <div style="padding:10px 14px 4px;font-size:14px;font-weight:600;color:var(--text);line-height:1.4">
-        ${r.title||'(no title)'}
-      </div>
-      <!-- Detail chips -->
-      ${chips ? `<div style="padding:4px 14px 8px;display:flex;flex-wrap:wrap;gap:5px">${chips}</div>` : ''}
-      <!-- Reason box -->
-      <div style="margin:0 14px 12px;background:${inc?'#f0fdf4':'#f9fafb'};border:1px solid ${inc?'#a7f3d0':'#e5e7eb'};border-radius:6px;padding:10px 13px">
-        <div style="font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${inc?'#047857':'#6b7280'};margin-bottom:5px">
-          ${inc ? '📋 納入理由' : '📋 排除理由'}
-        </div>
-        <div style="font-size:13.5px;color:var(--text2);line-height:1.75;white-space:pre-line">${r.reason||'（無說明）'}</div>
+      <div style="padding:11px 14px 8px;font-size:14.5px;font-weight:700;color:var(--text);line-height:1.45">${r.title||'(no title)'}</div>
+      ${detailHtml}
+      <div style="margin:0 14px 14px;background:${reasonBg};border:1px solid ${reasonBorder};border-radius:7px;padding:13px 16px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${reasonLabelColor};margin-bottom:9px">${reasonLabel}</div>
+        <div style="font-size:14px;color:var(--text2);line-height:1.85">${formatReason(r.reason)}</div>
       </div>
     </div>`;
   }).join('');
