@@ -258,6 +258,7 @@ td input:focus{border-bottom-color:var(--teal)}
       <button class="sb-btn" id="btnToggleKey">👁 顯示</button>
       <button class="sb-btn" id="btnSaveKey">💾 儲存</button>
     </div>
+    <button class="sb-btn" id="btnTestKey" style="margin-top:6px;width:100%;background:rgba(52,211,153,.15);border-color:rgba(52,211,153,.3);color:#34d399">⚡ 測試 API 連線</button>
   </div>
   <div class="sb-sec">
     <div class="sb-sec-lbl">工作流程</div>
@@ -652,6 +653,29 @@ document.getElementById('btnSaveKey').addEventListener('click',()=>{
   if(!v) return notify('請輸入 API Key','warn');
   setKey(v);updateDot();notify('API Key 已儲存 💾','success');
 });
+document.getElementById('btnTestKey').addEventListener('click', async()=>{
+  const k = getKey();
+  if(!k){ notify('請先輸入並儲存 API Key','warn'); return; }
+  const btn = document.getElementById('btnTestKey');
+  btn.textContent='⏳ 測試中…'; btn.disabled=true;
+  try{
+    const result = await gemini('Reply with only the word: OK', 20);
+    if(result.trim().toUpperCase().includes('OK') || result.trim().length > 0){
+      notify(`✅ API 連線成功！模型：${GEMINI_MODELS[0]}`,'success',5000);
+      btn.textContent='✅ 連線正常';
+      document.getElementById('apiDot').classList.add('ok');
+    } else {
+      notify('API 回應異常，請重試','warn');
+      btn.textContent='⚡ 測試 API 連線';
+    }
+  }catch(e){
+    notify(`❌ API 連線失敗：${e.message}`,'error',8000);
+    btn.textContent='❌ 連線失敗';
+  }
+  btn.disabled=false;
+  setTimeout(()=>{ btn.textContent='⚡ 測試 API 連線'; },6000);
+});
+
 document.getElementById('btnToggleKey').addEventListener('click',()=>{
   const i=document.getElementById('apiKeyInput');
   i.type=i.type==='password'?'text':'password';
@@ -695,33 +719,66 @@ document.getElementById('hamburger').addEventListener('click',()=>{sb.classList.
 function closeSB(){sb.classList.remove('open');sbOv.classList.remove('vis');}
 sbOv.addEventListener('click',closeSB);
 
-// ── GEMINI API ── (with retry)
-async function gemini(prompt,maxTok=2000){
-  const k=getKey();
-  if(!k) throw new Error('請先儲存 Gemini API Key');
-  for(let attempt=0;attempt<2;attempt++){
-    try{
-      const r=await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${k}`,
-        {method:'POST',headers:{'Content-Type':'application/json'},
-         body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],
-           generationConfig:{maxOutputTokens:maxTok,temperature:0.1}})}
-      );
-      if(r.status===429){await sleep(3000);continue;}
-      if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error?.message||`API error ${r.status}`);}
-      const d=await r.json();
-      // Gemini 2.5 Flash may return multiple parts (thinking + text)
-      // Find the first part that has a non-empty .text field
-      const parts = d.candidates?.[0]?.content?.parts || [];
-      const txt = parts.map(p=>p.text||'').filter(t=>t.trim()).join('');
-      if(!txt) {
-        // Log the raw response for debugging
-        console.warn('Gemini empty response:', JSON.stringify(d).substring(0,300));
-        throw new Error('AI 回傳空白，請重試');
+// ── GEMINI API ──
+// Model fallback list — tries each in order until one works
+const GEMINI_MODELS = [
+  'gemini-2.5-flash-preview-04-17',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+];
+
+async function gemini(prompt, maxTok=2000){
+  const k = getKey();
+  if(!k) throw new Error('請先輸入並儲存 Gemini API Key（左側欄）');
+
+  let lastErr = null;
+  for(const model of GEMINI_MODELS){
+    for(let attempt=0; attempt<2; attempt++){
+      try{
+        const body = {
+          contents: [{ role:'user', parts:[{ text:prompt }] }],
+          generationConfig: {
+            maxOutputTokens: maxTok,
+            temperature: 0.1,
+          }
+        };
+        // Disable thinking for 2.5 models to avoid empty responses
+        if(model.includes('2.5')){
+          body.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+        }
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${k}`,
+          { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) }
+        );
+        if(r.status===429){ await sleep(3000); continue; }
+        if(r.status===404){ lastErr=new Error(`模型 ${model} 不可用`); break; } // try next model
+        if(!r.ok){
+          const e=await r.json().catch(()=>({}));
+          throw new Error(e.error?.message || `API error ${r.status}`);
+        }
+        const d = await r.json();
+        const parts = d.candidates?.[0]?.content?.parts || [];
+        const txt = parts.map(p=>p.text||'').filter(t=>t.trim()).join('');
+        if(!txt){
+          // Check for finish reason
+          const reason = d.candidates?.[0]?.finishReason;
+          if(reason && reason !== 'STOP') throw new Error(`AI 回傳空白 (finishReason: ${reason})`);
+          throw new Error('AI 回傳空白，請重試');
+        }
+        // Success — remember this model for next time
+        if(GEMINI_MODELS[0] !== model){
+          const idx = GEMINI_MODELS.indexOf(model);
+          GEMINI_MODELS.unshift(GEMINI_MODELS.splice(idx,1)[0]);
+        }
+        return txt;
+      }catch(e){
+        lastErr = e;
+        if(attempt===0 && !e.message.includes('404')) await sleep(1200);
       }
-      return txt;
-    }catch(e){if(attempt===1)throw e;await sleep(1500);}
+    }
   }
+  throw lastErr || new Error('所有 Gemini 模型均無法連線，請確認 API Key 是否正確');
 }
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
