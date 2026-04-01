@@ -2463,130 +2463,443 @@ const PL={paper_bgcolor:'transparent',plot_bgcolor:'transparent',
   font:{family:'DM Sans, sans-serif',color:'#44403c'},
   hoverlabel:{bgcolor:'#ffffff',bordercolor:'#e2dcd4',font:{color:'#1c1917'}}};
 
+// ═══════════════════════════════════════════════════════════════
+// CHART RENDERING — styled to match publication-grade references
+// ═══════════════════════════════════════════════════════════════
+
+// Shared base layout (white academic style)
+const CHART_BASE = {
+  paper_bgcolor:'#ffffff', plot_bgcolor:'#ffffff',
+  font:{family:'Arial, Helvetica, sans-serif', color:'#000000', size:12},
+  hoverlabel:{bgcolor:'#f0f0f0', bordercolor:'#333', font:{color:'#000', size:11}},
+};
+
+// ── FOREST PLOT ──────────────────────────────────────────────
 function renderForest(ma){
-  const df=ma.df,res=ma.res,isBin=ma.dtype==='Binary';
+  const df=ma.df, res=ma.res, isBin=ma.dtype==='Binary';
   const xf=v=>isBin?Math.exp(v):v;
   const n=df.length;
-  const ys=df.map((_,i)=>n-i);
-  const vals=df.map(r=>xf(r.TE)),lows=df.map(r=>xf(r.lower)),highs=df.map(r=>xf(r.upper));
-  const pVal=xf(res.TE_pooled),pLow=xf(res.lower_pooled),pHigh=xf(res.upper_pooled);
-  const center=isBin?1:0;
-  const annots=[
-    {x:.02,y:n+.9,xref:'paper',yref:'y',text:'<b>Study</b>',showarrow:false,font:{color:'#78716c',size:12},xanchor:'left'},
-    {x:.72,y:n+.9,xref:'paper',yref:'y',text:`<b>${ma.measure}</b>`,showarrow:false,font:{color:'#78716c',size:12},xanchor:'center'},
-    {x:.86,y:n+.9,xref:'paper',yref:'y',text:'<b>95% CI</b>',showarrow:false,font:{color:'#78716c',size:12},xanchor:'center'},
-    {x:.99,y:n+.9,xref:'paper',yref:'y',text:'<b>Weight</b>',showarrow:false,font:{color:'#78716c',size:12},xanchor:'right'},
-    {x:.02,y:0,xref:'paper',yref:'y',text:'<b>Pooled (RE)</b>',showarrow:false,font:{color:'#c2710a',size:13},xanchor:'left'},
-    {x:.72,y:0,xref:'paper',yref:'y',text:`<b>${pVal.toFixed(3)}</b>`,showarrow:false,font:{color:'#c2710a',size:13},xanchor:'center'},
-    {x:.86,y:0,xref:'paper',yref:'y',text:`<b>[${pLow.toFixed(2)}, ${pHigh.toFixed(2)}]</b>`,showarrow:false,font:{color:'#c2710a',size:13},xanchor:'center'},
-    {x:.99,y:0,xref:'paper',yref:'y',text:'<b>100.0%</b>',showarrow:false,font:{color:'#c2710a',size:13},xanchor:'right'},
-    {x:.02,y:-.85,xref:'paper',yref:'y',
-      text:`Heterogeneity: I²=${res.I2.toFixed(1)}%   τ²=${res.tau2.toFixed(4)}   Q p=${res.p_Q.toFixed(4)}`,
-      showarrow:false,font:{color:'#78716c',size:11},xanchor:'left'},
-  ];
+  const ys=df.map((_,i)=>n-i);  // studies from top (n) to bottom (1)
+
+  const vals =df.map(r=>xf(r.TE));
+  const lows =df.map(r=>xf(r.lower));
+  const highs=df.map(r=>xf(r.upper));
+  const pValRE=xf(res.TE_pooled), pLowRE=xf(res.lower_pooled), pHighRE=xf(res.upper_pooled);
+
+  // Also compute fixed-effect pooled (Mantel-Haenszel style via inverse-variance)
+  const wF=df.map(r=>1/r.seTE**2), sumWF=wF.reduce((a,b)=>a+b,0);
+  const teFE=df.reduce((s,r,i)=>s+wF[i]*r.TE,0)/sumWF;
+  const seFE=Math.sqrt(1/sumWF);
+  const pValFE=xf(teFE), pLowFE=xf(teFE-1.96*seFE), pHighFE=xf(teFE+1.96*seFE);
+
+  const plotDomain=[0.55, 0.85];  // fraction of width for the plot area
+
+  // Column x-positions (paper fraction)
+  const xStudy =0.00;
+  const xEvTx  =0.34;
+  const xTotTx =0.38;
+  const xEvCtrl=0.44;
+  const xTotCtrl=0.48;
+  const xWtFix =0.52;
+  const xWtRand=0.57;
+  const xRR    =0.92;
+  const xCI    =1.00;
+
+  const annots=[];
+  const hY=n+1.3;
+
+  // Column headers
+  const hdrFont={color:'#000000', size:11.5};
+  annots.push(
+    {x:xStudy,y:hY,xref:'paper',yref:'y',text:'<b>Study</b>',showarrow:false,font:hdrFont,xanchor:'left'},
+    {x:(xEvTx+xTotTx)/2,y:hY+0.4,xref:'paper',yref:'y',text:'<b>Experimental</b>',showarrow:false,font:hdrFont,xanchor:'center'},
+    {x:(xEvTx+xTotTx)/2,y:hY,xref:'paper',yref:'y',text:'<b>Events  Total</b>',showarrow:false,font:{...hdrFont,size:10},xanchor:'center'},
+    {x:(xEvCtrl+xTotCtrl)/2,y:hY+0.4,xref:'paper',yref:'y',text:'<b>Control</b>',showarrow:false,font:hdrFont,xanchor:'center'},
+    {x:(xEvCtrl+xTotCtrl)/2,y:hY,xref:'paper',yref:'y',text:'<b>Events  Total</b>',showarrow:false,font:{...hdrFont,size:10},xanchor:'center'},
+    {x:xWtFix, y:hY+0.4,xref:'paper',yref:'y',text:'<b>Weight</b>',showarrow:false,font:hdrFont,xanchor:'center'},
+    {x:xWtFix, y:hY,xref:'paper',yref:'y',text:'<b>(common)</b>',showarrow:false,font:{...hdrFont,size:10},xanchor:'center'},
+    {x:xWtRand,y:hY+0.4,xref:'paper',yref:'y',text:'<b>Weight</b>',showarrow:false,font:hdrFont,xanchor:'center'},
+    {x:xWtRand,y:hY,xref:'paper',yref:'y',text:'<b>(random)</b>',showarrow:false,font:{...hdrFont,size:10},xanchor:'center'},
+    {x:(plotDomain[0]+plotDomain[1])/2,y:hY+0.4,xref:'paper',yref:'y',text:`<b>${ma.measure}</b>`,showarrow:false,font:hdrFont,xanchor:'center'},
+    {x:(plotDomain[0]+plotDomain[1])/2,y:hY,xref:'paper',yref:'y',text:'<b>MH, Fixed + Random, 95% CI</b>',showarrow:false,font:{...hdrFont,size:10},xanchor:'center'},
+    {x:xRR,y:hY+0.4,xref:'paper',yref:'y',text:`<b>${ma.measure}</b>`,showarrow:false,font:hdrFont,xanchor:'center'},
+    {x:xRR,y:hY,xref:'paper',yref:'y',text:'<b>MH, F+R, 95% CI</b>',showarrow:false,font:{...hdrFont,size:10},xanchor:'center'},
+  );
+
+  // Per-study rows
+  // Compute fixed-effect weights
+  const wFtot=wF.reduce((a,b)=>a+b,0);
   df.forEach((r,i)=>{
-    const y=ys[i],sid=r['Study ID']||`Study ${i+1}`;
+    const y=ys[i];
+    const sid=r['Study ID']||`Study ${i+1}`;
+    const v=vals[i], lo=lows[i], hi=highs[i];
+    const wtFix=((wF[i]/wFtot)*100).toFixed(1)+'%';
+    const wtRand=((r.weight||0).toFixed(1))+'%';
+    const evTx  = r['Tx Events']!==undefined ? r['Tx Events']  : '';
+    const totTx = r['Tx Total'] !==undefined ? r['Tx Total']   : '';
+    const evCtrl= r['Ctrl Events']!==undefined? r['Ctrl Events']: '';
+    const totCtrl=r['Ctrl Total']!==undefined? r['Ctrl Total'] : '';
+    const rrTxt = `${v.toFixed(2)} [${lo.toFixed(2)}; ${hi.toFixed(2)}]`;
+
     annots.push(
-      {x:.02,y,xref:'paper',yref:'y',text:sid,showarrow:false,font:{color:'#1c1917',size:12},xanchor:'left'},
-      {x:.72,y,xref:'paper',yref:'y',text:vals[i].toFixed(3),showarrow:false,font:{color:'#1c1917',size:12},xanchor:'center'},
-      {x:.86,y,xref:'paper',yref:'y',text:`[${lows[i].toFixed(2)}, ${highs[i].toFixed(2)}]`,showarrow:false,font:{color:'#1c1917',size:12},xanchor:'center'},
-      {x:.99,y,xref:'paper',yref:'y',text:`${(r.weight||0).toFixed(1)}%`,showarrow:false,font:{color:'#78716c',size:12},xanchor:'right'}
+      {x:xStudy, y,xref:'paper',yref:'y',text:sid,showarrow:false,font:{size:11.5,color:'#000'},xanchor:'left'},
+      {x:xEvTx,  y,xref:'paper',yref:'y',text:String(evTx),  showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xTotTx, y,xref:'paper',yref:'y',text:String(totTx), showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xEvCtrl,y,xref:'paper',yref:'y',text:String(evCtrl),showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xTotCtrl,y,xref:'paper',yref:'y',text:String(totCtrl),showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xWtFix, y,xref:'paper',yref:'y',text:wtFix, showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xWtRand,y,xref:'paper',yref:'y',text:wtRand,showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xRR,    y,xref:'paper',yref:'y',text:rrTxt, showarrow:false,font:{size:10.5,color:'#000'},xanchor:'center'},
     );
   });
+
+  // Pooled rows
+  const yFE=-0.5, yRE=-1.3;
+  const totEvTx  = isBin ? df.reduce((s,r)=>s+(+r['Tx Events']  ||0),0) : '';
+  const totTotTx = isBin ? df.reduce((s,r)=>s+(+r['Tx Total']   ||0),0) : '';
+  const totEvCtrl= isBin ? df.reduce((s,r)=>s+(+r['Ctrl Events']||0),0) : '';
+  const totTotCtrl=isBin ? df.reduce((s,r)=>s+(+r['Ctrl Total'] ||0),0) : '';
+  const pooledFont={size:12,color:'#000000'};
+
+  annots.push(
+    {x:xStudy,y:yFE,xref:'paper',yref:'y',text:'<b>Total (common effect, 95% CI)</b>',showarrow:false,font:pooledFont,xanchor:'left'},
+    {x:xEvTx,  y:yFE,xref:'paper',yref:'y',text:`<b>${totEvTx}</b>`,  showarrow:false,font:pooledFont,xanchor:'center'},
+    {x:xTotTx, y:yFE,xref:'paper',yref:'y',text:`<b>${totTotTx}</b>`, showarrow:false,font:pooledFont,xanchor:'center'},
+    {x:xEvCtrl,y:yFE,xref:'paper',yref:'y',text:`<b>${totEvCtrl}</b>`,showarrow:false,font:pooledFont,xanchor:'center'},
+    {x:xTotCtrl,y:yFE,xref:'paper',yref:'y',text:`<b>${totTotCtrl}</b>`,showarrow:false,font:pooledFont,xanchor:'center'},
+    {x:xWtFix, y:yFE,xref:'paper',yref:'y',text:'<b>100.0%</b>',showarrow:false,font:pooledFont,xanchor:'center'},
+    {x:xRR,    y:yFE,xref:'paper',yref:'y',text:`<b>${pValFE.toFixed(2)} [${pLowFE.toFixed(2)}; ${pHighFE.toFixed(2)}]</b>`,showarrow:false,font:pooledFont,xanchor:'center'},
+
+    {x:xStudy,y:yRE,xref:'paper',yref:'y',text:'<b>Total (random effect, 95% CI)</b>',showarrow:false,font:pooledFont,xanchor:'left'},
+    {x:xWtRand,y:yRE,xref:'paper',yref:'y',text:'<b>100.0%</b>',showarrow:false,font:pooledFont,xanchor:'center'},
+    {x:xRR,    y:yRE,xref:'paper',yref:'y',text:`<b>${pValRE.toFixed(2)} [${pLowRE.toFixed(2)}; ${pHighRE.toFixed(2)}]</b>`,showarrow:false,font:pooledFont,xanchor:'center'},
+
+    // Heterogeneity stats below
+    {x:xStudy,y:yRE-0.9,xref:'paper',yref:'y',
+     text:`Heterogeneity: Tau² = ${res.tau2.toFixed(4)}; Chi² = ${res.Q.toFixed(2)}, df = ${df.length-1} (P = ${res.p_Q.toFixed(4)}); I² = ${res.I2.toFixed(1)}%`,
+     showarrow:false,font:{size:10.5,color:'#333'},xanchor:'left'},
+    // Favours labels via annotation below axis
+    {x:plotDomain[0]+0.01,y:yRE-1.8,xref:'paper',yref:'y',
+     text:`← Favours ${ma.measure==='SMD'?'Tx':'HRT'}`,showarrow:false,font:{size:10,color:'#333'},xanchor:'left'},
+    {x:plotDomain[1]-0.01,y:yRE-1.8,xref:'paper',yref:'y',
+     text:`Favours Control →`,showarrow:false,font:{size:10,color:'#333'},xanchor:'right'},
+  );
+
+  // Determine axis range for log scale
+  const allX=[...vals,...lows,...highs,pLowFE,pHighFE,pLowRE,pHighRE].filter(v=>v>0);
+  const xMin=Math.min(...allX)*0.5, xMax=Math.max(...allX)*2;
+
   const traces=[
-    {type:'scatter',x:vals,y:ys,mode:'markers',
-     marker:{symbol:'square',size:df.map(r=>Math.max(8,Math.min(20,r.weight*.75))),color:'#0891b2',opacity:.85,line:{color:'#1c2b45',width:.5}},
-     error_x:{type:'data',symmetric:false,array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),color:'#64a8c8',thickness:2,width:5},
-     hovertemplate:df.map((r,i)=>`<b>${r['Study ID']||''}</b><br>${ma.measure}: ${vals[i].toFixed(3)}<br>95%CI: [${lows[i].toFixed(3)}, ${highs[i].toFixed(3)}]<br>Weight: ${(r.weight||0).toFixed(1)}%<extra></extra>`),showlegend:false},
-    {type:'scatter',x:[pVal],y:[0],mode:'markers',
-     marker:{symbol:'diamond',size:22,color:'#c2710a',line:{color:'#fff',width:1.5}},
-     error_x:{type:'data',symmetric:false,array:[pHigh-pVal],arrayminus:[pVal-pLow],color:'#c2710a',thickness:2.5,width:8},
-     hovertemplate:`<b>Pooled</b><br>${ma.measure}: ${pVal.toFixed(3)}<br>[${pLow.toFixed(3)}, ${pHigh.toFixed(3)}]<extra></extra>`,showlegend:false}
+    // Individual study squares (sized by weight)
+    {type:'scatter', x:vals, y:ys, mode:'markers',
+     marker:{symbol:'square',size:df.map(r=>Math.max(6,Math.min(18,r.weight*.65))),
+       color:'#1a4e8f', opacity:0.9, line:{color:'#1a4e8f',width:0.5}},
+     error_x:{type:'data',symmetric:false,
+       array:vals.map((v,i)=>highs[i]-v),
+       arrayminus:vals.map((v,i)=>v-lows[i]),
+       color:'#000000',thickness:1.5,width:4},
+     hovertemplate:df.map((r,i)=>`<b>${r['Study ID']||''}</b><br>${ma.measure}: ${vals[i].toFixed(3)}<br>95%CI: [${lows[i].toFixed(3)}, ${highs[i].toFixed(3)}]<br>Weight(RE): ${(r.weight||0).toFixed(1)}%<extra></extra>`),
+     showlegend:false},
+    // Fixed-effect diamond
+    {type:'scatter',x:[pValFE],y:[yFE],mode:'markers',
+     marker:{symbol:'diamond',size:18,color:'#000000',line:{color:'#000000',width:1}},
+     error_x:{type:'data',symmetric:false,array:[pHighFE-pValFE],arrayminus:[pValFE-pLowFE],
+       color:'#000000',thickness:2,width:6},
+     hovertemplate:`<b>Fixed Effect</b><br>${ma.measure}: ${pValFE.toFixed(3)}<br>[${pLowFE.toFixed(3)}, ${pHighFE.toFixed(3)}]<extra></extra>`,
+     showlegend:false},
+    // Random-effect diamond (larger)
+    {type:'scatter',x:[pValRE],y:[yRE],mode:'markers',
+     marker:{symbol:'diamond',size:22,color:'#000000',line:{color:'#000000',width:1}},
+     error_x:{type:'data',symmetric:false,array:[pHighRE-pValRE],arrayminus:[pValRE-pLowRE],
+       color:'#000000',thickness:2.5,width:8},
+     hovertemplate:`<b>Random Effect</b><br>${ma.measure}: ${pValRE.toFixed(3)}<br>[${pLowRE.toFixed(3)}, ${pHighRE.toFixed(3)}]<extra></extra>`,
+     showlegend:false},
   ];
-  Plotly.react('forestPlot',traces,{...PL,
-    xaxis:{type:isBin?'log':'linear',domain:[.28,.70],gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:11},
-      title:{text:`← Favours Tx   ${ma.measure}   Favours Ctrl →`,font:{color:'#78716c',size:11}},showline:true,linecolor:'#e2dcd4',zeroline:false},
-    yaxis:{range:[-1.6,n+1.5],showticklabels:false,showgrid:false,zeroline:false},
+
+  Plotly.react('forestPlot', traces, {
+    ...CHART_BASE,
+    xaxis:{
+      type:isBin?'log':'linear',
+      domain:plotDomain,
+      range:isBin?[Math.log10(xMin),Math.log10(xMax)]:[xMin,xMax],
+      showgrid:false, zeroline:false, showline:true, linecolor:'#000',
+      tickfont:{color:'#000',size:10},
+      tickformat:isBin?'.2r':'',
+    },
+    yaxis:{range:[yRE-2.5, n+2], showticklabels:false, showgrid:false, zeroline:false},
     shapes:[
-      {type:'line',x0:center,x1:center,y0:-1,y1:n+.4,xref:'x',yref:'y',line:{color:'#d4cec6',dash:'dot',width:1.5}},
-      {type:'line',x0:0,x1:1,y0:n+.3,y1:n+.3,xref:'paper',yref:'y',line:{color:'#e2dcd4',width:1}},
-      {type:'line',x0:0,x1:1,y0:.35,y1:.35,xref:'paper',yref:'y',line:{color:'#e2dcd4',width:1}},
+      // null line
+      {type:'line',x0:isBin?1:0,x1:isBin?1:0,y0:yRE-0.5,y1:n+0.4,xref:'x',yref:'y',line:{color:'#000',dash:'dot',width:1}},
+      // header separator
+      {type:'line',x0:0,x1:1,y0:n+0.55,y1:n+0.55,xref:'paper',yref:'y',line:{color:'#000',width:1}},
+      // before pooled separator
+      {type:'line',x0:0,x1:1,y0:0.55,y1:0.55,xref:'paper',yref:'y',line:{color:'#000',width:1}},
+      // between FE and RE
+      {type:'line',x0:0,x1:1,y0:yFE-0.55,y1:yFE-0.55,xref:'paper',yref:'y',line:{color:'#000',width:0.5,dash:'dot'}},
     ],
-    annotations:annots,margin:{l:10,r:10,t:40,b:70},height:Math.max(320,n*44+130),dragmode:false},
-    {responsive:true,displayModeBar:false});
+    annotations: annots,
+    margin:{l:10, r:10, t:50, b:60},
+    height: Math.max(380, n*36+240),
+    dragmode:false,
+  }, {responsive:true, displayModeBar:true,
+      modeBarButtonsToRemove:['zoom2d','pan2d','select2d','lasso2d','resetScale2d'],
+      toImageButtonOptions:{filename:`forest_plot`,scale:2}});
 }
 
+// ── FUNNEL PLOT ──────────────────────────────────────────────
 function renderFunnel(ma){
-  const df=ma.df,res=ma.res;
-  const maxSE=Math.max(...df.map(r=>r.seTE))*1.1;
+  const df=ma.df, res=ma.res, isBin=ma.dtype==='Binary';
+  // Use log(RR) scale for x, SE for y (y-inverted)
+  const xs = df.map(r=>r.TE);   // log scale
+  const ys2= df.map(r=>r.seTE);
+  const poolTE=res.TE_pooled;
+  const maxSE=Math.max(...ys2)*1.15;
+
+  // 95% pseudo-CI funnel boundary
+  const seRange=Array.from({length:50},(_,i)=>maxSE*(i/49));
+  const funnelLeft =seRange.map(se=>poolTE-1.96*se);
+  const funnelRight=seRange.map(se=>poolTE+1.96*se);
+
   Plotly.react('funnelPlot',[
-    {type:'scatter',x:df.map(r=>r.TE),y:df.map(r=>r.seTE),mode:'markers',text:df.map(r=>r['Study ID']||''),
-     marker:{color:'#0891b2',size:10,opacity:.8,line:{color:'white',width:1}},
-     hovertemplate:'<b>%{text}</b><br>TE: %{x:.3f}<br>SE: %{y:.3f}<extra></extra>'},
-    {type:'scatter',x:[res.TE_pooled,res.TE_pooled],y:[0,maxSE],mode:'lines',line:{color:'#c2710a',dash:'dash',width:1.8},showlegend:false,hoverinfo:'skip'},
-    {type:'scatter',
-     x:[res.TE_pooled-1.96*maxSE,res.TE_pooled,res.TE_pooled+1.96*maxSE,res.TE_pooled-1.96*maxSE],
-     y:[maxSE,0,maxSE,maxSE],fill:'toself',fillcolor:'rgba(8,145,178,.07)',line:{color:'rgba(8,145,178,.3)',width:1.2},mode:'lines',showlegend:false,hoverinfo:'skip'}
-  ],{...PL,
-    xaxis:{title:ma.effectLabel,gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:12},title_font:{color:'#78716c',size:12}},
-    yaxis:{title:'Standard Error',autorange:'reversed',gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:12},title_font:{color:'#78716c',size:12}},
-    margin:{l:60,r:20,t:20,b:60},height:300},{responsive:true,displayModeBar:false});
+    // Funnel left boundary
+    {type:'scatter',x:funnelLeft,y:seRange,mode:'lines',
+     line:{color:'#000000',width:1,dash:'dot'},showlegend:false,hoverinfo:'skip'},
+    // Funnel right boundary
+    {type:'scatter',x:funnelRight,y:seRange,mode:'lines',
+     line:{color:'#000000',width:1,dash:'dot'},showlegend:false,hoverinfo:'skip'},
+    // Vertical line at pooled effect
+    {type:'scatter',x:[poolTE,poolTE],y:[0,maxSE],mode:'lines',
+     line:{color:'#000',width:1,dash:'dot'},showlegend:false,hoverinfo:'skip'},
+    // Study points
+    {type:'scatter',x:xs,y:ys2,mode:'markers',text:df.map(r=>r['Study ID']||''),
+     marker:{color:'#808080',size:10,opacity:0.85,line:{color:'#444',width:0.5}},
+     hovertemplate:'<b>%{text}</b><br>TE: %{x:.3f}<br>SE: %{y:.3f}<extra></extra>',
+     showlegend:false},
+  ],{
+    ...CHART_BASE,
+    xaxis:{
+      title:{text:`${ma.effectLabel} (Log Scale)`,font:{size:12,color:'#000'}},
+      type:isBin?'log':'linear',
+      tickformat:isBin?'.2r':'',
+      showgrid:false, showline:true, linecolor:'#000', zeroline:false,
+      tickfont:{color:'#000',size:11},
+    },
+    yaxis:{
+      title:{text:'Standard Error',font:{size:12,color:'#000'}},
+      autorange:'reversed',
+      showgrid:false, showline:true, linecolor:'#000', zeroline:false,
+      tickfont:{color:'#000',size:11},
+    },
+    margin:{l:70,r:20,t:30,b:65},height:380,
+  },{responsive:true,displayModeBar:true,
+     modeBarButtonsToRemove:['zoom2d','pan2d','select2d','lasso2d'],
+     toImageButtonOptions:{filename:'funnel_plot',scale:2}});
 }
 
+// ── LEAVE-ONE-OUT (table + forest style) ──────────────────────
 function renderLoo(ma){
-  const infl=ma.infl,res=ma.res,isBin=ma.dtype==='Binary';
+  const infl=ma.infl, res=ma.res, isBin=ma.dtype==='Binary';
   const el=document.getElementById('looPlot');
-  if(!infl.length){el.innerHTML='<p style="padding:16px;color:#78716c;font-size:14px">需要 ≥ 3 篇研究才能進行敏感度分析</p>';return;}
+  if(!infl.length){el.innerHTML='<p style="padding:16px;color:#666;font-size:14px">需要 ≥ 3 篇研究才能進行敏感度分析</p>';return;}
   const xf=v=>isBin?Math.exp(v):v;
-  const vals=infl.map(r=>xf(r.teDel)),lows=infl.map(r=>xf(r.lDel)),highs=infl.map(r=>xf(r.uDel));
-  const pVal=xf(res.TE_pooled);
-  Plotly.react('looPlot',[
-    {type:'scatter',x:vals,y:infl.map(r=>r.study),mode:'markers',
-     marker:{symbol:'circle',size:10,color:'#0891b2',line:{color:'white',width:1}},
-     error_x:{type:'data',symmetric:false,array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),color:'#64a8c8',thickness:1.8,width:5},
-     hovertemplate:'<b>Omit %{y}</b><br>%{x:.3f}<extra></extra>',showlegend:false},
-    {type:'scatter',x:[pVal,pVal],y:[infl[infl.length-1].study,infl[0].study],mode:'lines',line:{color:'#c2710a',dash:'dash',width:2},showlegend:false,hoverinfo:'skip'}
-  ],{...PL,
-    xaxis:{title:ma.measure,gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:12},title_font:{color:'#78716c',size:12}},
-    yaxis:{automargin:true,tickfont:{color:'#1c1917',size:12}},
-    margin:{l:140,r:20,t:20,b:60},height:Math.max(260,infl.length*36+90)},{responsive:true,displayModeBar:false});
+
+  const n=infl.length;
+  const ys=infl.map((_,i)=>n-i);
+  const vals=infl.map(r=>xf(r.teDel));
+  const lows=infl.map(r=>xf(r.lDel));
+  const highs=infl.map(r=>xf(r.uDel));
+  const pVal=xf(res.TE_pooled), pLow=xf(res.lower_pooled), pHigh=xf(res.upper_pooled);
+
+  const tau2s=infl.map(r=>(r.tau2del||0).toFixed(4));
+  const taus =infl.map(r=>Math.sqrt(r.tau2del||0).toFixed(4));
+  const i2s  =infl.map(r=>{
+    // approx I2 from leave-one-out QE
+    const q=r.QEdel||0, k2=n-1;
+    return Math.max(0,(q-(k2-1))/q*100).toFixed(1)+'%';
+  });
+
+  // pvalue per LOO (from stored or approximated)
+  const annots=[];
+  const hY=n+0.9;
+  const hFont={color:'#000',size:11};
+
+  // Column positions (paper coords)
+  const xStudy=0.00, xPval=0.26, xTau2=0.35, xTau=0.43, xI2=0.51, xRR=0.58, xCI=0.70;
+
+  annots.push(
+    {x:xStudy,y:hY,xref:'paper',yref:'y',text:'<b>Study</b>',showarrow:false,font:hFont,xanchor:'left'},
+    {x:xPval, y:hY,xref:'paper',yref:'y',text:'<b>P-value</b>',showarrow:false,font:hFont,xanchor:'center'},
+    {x:xTau2, y:hY,xref:'paper',yref:'y',text:'<b>Tau2</b>',showarrow:false,font:hFont,xanchor:'center'},
+    {x:xTau,  y:hY,xref:'paper',yref:'y',text:'<b>Tau</b>',showarrow:false,font:hFont,xanchor:'center'},
+    {x:xI2,   y:hY,xref:'paper',yref:'y',text:'<b>I2</b>',showarrow:false,font:hFont,xanchor:'center'},
+    {x:xRR,   y:hY,xref:'paper',yref:'y',text:`<b>${ma.measure}</b>`,showarrow:false,font:hFont,xanchor:'center'},
+    {x:xCI,   y:hY,xref:'paper',yref:'y',text:'<b>95%-CI</b>',showarrow:false,font:hFont,xanchor:'center'},
+    {x:0.86,  y:hY,xref:'paper',yref:'y',text:`<b>Leave-One-Out Meta-Analysis</b>`,showarrow:false,font:hFont,xanchor:'center'},
+  );
+
+  infl.forEach((r,i)=>{
+    const y=ys[i];
+    const v=vals[i], lo=lows[i], hi=highs[i];
+    // Approximate p-value from z-score
+    const z=Math.abs(r.teDel/Math.sqrt(r.tau2del>0?r.tau2del+infl[i]?.seTE2||0.01:0.01));
+    // Use normal approximation
+    const pv = (2*(1-0.5*(1+erf(Math.abs(r.teDel/Math.sqrt((infl[i]||{seTE:0.1}).seTE||0.1))/Math.SQRT2)))).toFixed(4);
+
+    annots.push(
+      {x:xStudy,y,xref:'paper',yref:'y',text:`Omitting ${r.study}`,showarrow:false,font:{size:11,color:'#000'},xanchor:'left'},
+      {x:xTau2, y,xref:'paper',yref:'y',text:tau2s[i],showarrow:false,font:{size:10.5,color:'#000'},xanchor:'center'},
+      {x:xTau,  y,xref:'paper',yref:'y',text:taus[i], showarrow:false,font:{size:10.5,color:'#000'},xanchor:'center'},
+      {x:xI2,   y,xref:'paper',yref:'y',text:i2s[i],  showarrow:false,font:{size:10.5,color:'#000'},xanchor:'center'},
+      {x:xRR,   y,xref:'paper',yref:'y',text:v.toFixed(2),showarrow:false,font:{size:10.5,color:'#000'},xanchor:'center'},
+      {x:xCI,   y,xref:'paper',yref:'y',text:`[${lo.toFixed(2)}; ${hi.toFixed(2)}]`,showarrow:false,font:{size:10.5,color:'#000'},xanchor:'center'},
+    );
+  });
+
+  // Total row
+  annots.push(
+    {x:xStudy,y:0,xref:'paper',yref:'y',text:'<b>Total (95% CI)</b>',showarrow:false,font:{size:12,color:'#000',bold:true},xanchor:'left'},
+    {x:xTau2,y:0,xref:'paper',yref:'y',text:`<b>${res.tau2.toFixed(4)}</b>`,showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+    {x:xTau, y:0,xref:'paper',yref:'y',text:`<b>${Math.sqrt(res.tau2).toFixed(4)}</b>`,showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+    {x:xI2,  y:0,xref:'paper',yref:'y',text:`<b>${res.I2.toFixed(1)}%</b>`,showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+    {x:xRR,  y:0,xref:'paper',yref:'y',text:`<b>${pVal.toFixed(2)}</b>`,showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+    {x:xCI,  y:0,xref:'paper',yref:'y',text:`<b>[${pLow.toFixed(2)}; ${pHigh.toFixed(2)}]</b>`,showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+    // Favours labels
+    {x:0.74,y:-1.2,xref:'paper',yref:'y',text:`← Favours ${ma.measure==='SMD'?'Tx':'HRT'}   Risk Ratio   Favours Control →`,showarrow:false,font:{size:10,color:'#333'},xanchor:'center'},
+  );
+
+  const allX=[...vals,...lows,...highs,pLow,pHigh].filter(v=>v>0);
+  const xMin=Math.min(...allX)*0.5, xMax=Math.max(...allX)*2;
+
+  const traces=[
+    // LOO squares
+    {type:'scatter',x:vals,y:ys,mode:'markers',
+     marker:{symbol:'square',size:10,color:'#1a4e8f',line:{color:'#1a4e8f',width:0.5}},
+     error_x:{type:'data',symmetric:false,
+       array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),
+       color:'#000',thickness:1.5,width:4},
+     hovertemplate:infl.map((r,i)=>`<b>Omit ${r.study}</b><br>${ma.measure}: ${vals[i].toFixed(3)}<br>[${lows[i].toFixed(3)}, ${highs[i].toFixed(3)}]<extra></extra>`),
+     showlegend:false},
+    // Total diamond
+    {type:'scatter',x:[pVal],y:[0],mode:'markers',
+     marker:{symbol:'diamond',size:20,color:'#000',line:{color:'#000',width:1}},
+     error_x:{type:'data',symmetric:false,array:[pHigh-pVal],arrayminus:[pVal-pLow],
+       color:'#000',thickness:2.5,width:8},
+     hovertemplate:`<b>Total</b><br>${ma.measure}: ${pVal.toFixed(3)}<br>[${pLow.toFixed(3)}, ${pHigh.toFixed(3)}]<extra></extra>`,
+     showlegend:false},
+  ];
+
+  Plotly.react('looPlot', traces, {
+    ...CHART_BASE,
+    xaxis:{
+      type:isBin?'log':'linear',
+      domain:[0.72,0.99],
+      range:isBin?[Math.log10(xMin),Math.log10(xMax)]:[xMin,xMax],
+      showgrid:false, zeroline:false, showline:true, linecolor:'#000',
+      tickfont:{color:'#000',size:10},
+      tickformat:isBin?'.1r':'',
+    },
+    yaxis:{range:[-1.8,n+1.5],showticklabels:false,showgrid:false,zeroline:false},
+    shapes:[
+      {type:'line',x0:isBin?1:0,x1:isBin?1:0,y0:-0.5,y1:n+0.5,xref:'x',yref:'y',line:{color:'#000',dash:'dot',width:1}},
+      {type:'line',x0:0,x1:1,y0:n+0.55,y1:n+0.55,xref:'paper',yref:'y',line:{color:'#000',width:1}},
+      {type:'line',x0:0,x1:1,y0:0.55,y1:0.55,xref:'paper',yref:'y',line:{color:'#000',width:1}},
+    ],
+    annotations:annots,
+    margin:{l:10,r:10,t:40,b:50},
+    height:Math.max(340,n*36+180),
+    dragmode:false,
+  },{responsive:true,displayModeBar:true,
+     modeBarButtonsToRemove:['zoom2d','pan2d','select2d','lasso2d'],
+     toImageButtonOptions:{filename:'leave_one_out',scale:2}});
+}
+// Simple erf approximation for p-value
+function erf(x){
+  const t=1/(1+0.3275911*Math.abs(x));
+  const p=1-t*(0.254829592+t*(-0.284496736+t*(1.421413741+t*(-1.453152027+t*1.061405429))))*Math.exp(-x*x);
+  return x<0?-p:p;
 }
 
+// ── INFLUENCE DIAGNOSTICS ────────────────────────────────────
 function renderInfl(ma){
-  const infl=ma.infl,res=ma.res;
+  const infl=ma.infl, res=ma.res;
   const el=document.getElementById('inflPlot');
-  if(!infl.length){el.innerHTML='<p style="padding:16px;color:#78716c;font-size:14px">研究數不足（需 ≥ 3）</p>';return;}
-  const k=infl.length,x=infl.map((_,i)=>i+1);
+  if(!infl.length){el.innerHTML='<p style="padding:16px;color:#666;font-size:14px">研究數不足（需 ≥ 3）</p>';return;}
+  const k=infl.length, x=infl.map((_,i)=>i+1);
+
+  // 8 panels matching reference: rstudent, dffits, cook.d, cov.r, tau2.del, QE.del, hat, weight
   const metrics=[
-    {key:'rstudent',label:'Studentized Residuals',refs:[-2,2],sym:true},
-    {key:'dffits',label:'DFFITS',refs:[2*Math.sqrt(2/k)]},
-    {key:'cookD',label:"Cook's D",refs:[4/k]},
-    {key:'covR',label:'Covariance Ratio',refs:[1]},
-    {key:'tau2del',label:'Leave-One-Out τ²',refs:[res.tau2]},
-    {key:'hat',label:'Hat Values',refs:[2/k]},
+    {key:'rstudent', label:'rstudent',  refs:[-2,2],    sym:true},
+    {key:'dffits',   label:'dffits',    refs:[2*Math.sqrt(2/k)], sym:true},
+    {key:'cookD',    label:'cook.d',    refs:[4/k]},
+    {key:'covR',     label:'cov.r',     refs:[1]},
+    {key:'tau2del',  label:'tau2.del',  refs:[res.tau2]},
+    {key:'QEdel',    label:'QE.del',    refs:[res.Q]},
+    {key:'hat',      label:'hat',       refs:[2/k],    dashed:[1/k]},
+    {key:'weight',   label:'weight',    refs:[100/k]},
   ];
-  const nr=3,nc=2;
-  const traces=[],layout={...PL,margin:{l:50,r:20,t:50,b:30},height:nr*190+60,showlegend:false};
+
+  const nr=4, nc=2;
+  const traces=[], layout={
+    ...CHART_BASE,
+    margin:{l:60,r:20,t:30,b:30},
+    height:nr*200+60,
+    showlegend:false,
+  };
+
   metrics.forEach((m,i)=>{
-    const row=Math.floor(i/nc),col=i%nc;
-    const xd=[col/nc+0.04,(col+1)/nc-0.04];
-    const yd=[(nr-row-1)/nr+0.04,(nr-row)/nr-0.04];
+    const row=Math.floor(i/nc), col=i%nc;
+    const xd=[col/nc+0.05, (col+1)/nc-0.03];
+    const yd=[(nr-row-1)/nr+0.04, (nr-row)/nr-0.025];
     const ax=i===0?'':String(i+1);
     const vals=infl.map(r=>r[m.key]||0);
     const maxI=vals.reduce((mi,v,ii)=>Math.abs(v)>Math.abs(vals[mi])?ii:mi,0);
-    traces.push({type:'scatter',x,y:vals,xaxis:`x${ax}`,yaxis:`y${ax}`,mode:'lines+markers',
-      line:{color:'#0891b2',width:1.5},
-      marker:{color:vals.map((_,ii)=>ii===maxI?'#be123c':'#64a8c8'),size:7},
-      text:infl.map(r=>r.study),hovertemplate:'<b>%{text}</b><br>'+m.label+': %{y:.3f}<extra></extra>',name:m.label});
-    layout[`xaxis${ax}`]={domain:xd,showgrid:false,tickfont:{color:'#a8a29e',size:10},title:{text:'Study #',font:{color:'#a8a29e',size:10}}};
-    layout[`yaxis${ax}`]={domain:yd,gridcolor:'#e2dcd4',tickfont:{color:'#78716c',size:10},title:{text:m.label,font:{color:'#78716c',size:11}}};
+
+    traces.push({
+      type:'scatter', x, y:vals, xaxis:`x${ax}`, yaxis:`y${ax}`,
+      mode:'lines+markers',
+      line:{color:'#000000', width:1.2},
+      marker:{color:vals.map((_,ii)=>ii===maxI?'#cc0000':'#888888'), size:6,
+              symbol:'circle-open', line:{width:1.5}},
+      text:infl.map(r=>r.study),
+      hovertemplate:`<b>%{text}</b><br>${m.label}: %{y:.4f}<extra></extra>`,
+      name:m.label,
+    });
+
+    layout[`xaxis${ax}`]={domain:xd, showgrid:false, showline:false,
+      tickfont:{color:'#000',size:9.5},
+      tickvals:x, ticktext:x.map(String),
+      title:{text:'',font:{size:9}}};
+    layout[`yaxis${ax}`]={domain:yd, gridcolor:'#e0e0e0', showgrid:true,
+      tickfont:{color:'#000',size:9.5},
+      zeroline:true, zerolinecolor:'#999', zerolinewidth:1,
+      title:{text:m.label, font:{color:'#000',size:10.5}}};
+
+    // Reference lines
+    const refColor='#000', refDash='dot';
     m.refs.forEach(ref=>{
-      traces.push({type:'scatter',x:[1,k],y:[ref,ref],xaxis:`x${ax}`,yaxis:`y${ax}`,mode:'lines',line:{color:'#c2710a',dash:'dot',width:1.2},hoverinfo:'skip',showlegend:false});
-      if(m.sym) traces.push({type:'scatter',x:[1,k],y:[-ref,-ref],xaxis:`x${ax}`,yaxis:`y${ax}`,mode:'lines',line:{color:'#c2710a',dash:'dot',width:1.2},hoverinfo:'skip',showlegend:false});
+      traces.push({type:'scatter',x:[1,k],y:[ref,ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
+        mode:'lines',line:{color:refColor,dash:refDash,width:1},hoverinfo:'skip',showlegend:false});
+      if(m.sym) traces.push({type:'scatter',x:[1,k],y:[-ref,-ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
+        mode:'lines',line:{color:refColor,dash:refDash,width:1},hoverinfo:'skip',showlegend:false});
+    });
+    if(m.dashed) m.dashed.forEach(ref=>{
+      traces.push({type:'scatter',x:[1,k],y:[ref,ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
+        mode:'lines',line:{color:'#999',dash:'dash',width:1},hoverinfo:'skip',showlegend:false});
+    });
+
+    // Panel title annotation
+    layout[`annotations`]=(layout.annotations||[]).concat({
+      x:(xd[0]+xd[1])/2, y:yd[1]+0.005, xref:'paper', yref:'paper',
+      text:`<b>${m.label}</b>`, showarrow:false,
+      font:{color:'#000',size:11}, xanchor:'center', yanchor:'bottom',
     });
   });
-  Plotly.react('inflPlot',traces,layout,{responsive:true,displayModeBar:false});
+
+  Plotly.react('inflPlot',traces,layout,{responsive:true,displayModeBar:true,
+    modeBarButtonsToRemove:['zoom2d','pan2d','select2d','lasso2d'],
+    toImageButtonOptions:{filename:'influence_diagnostics',scale:2}});
 }
+
 
 document.getElementById('btnStats').addEventListener('click',()=>{
   const out=document.getElementById('statsOutcomeSel').value;
