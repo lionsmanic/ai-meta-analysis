@@ -2097,97 +2097,118 @@ document.getElementById('btnExtract').addEventListener('click',async()=>{
   btn.disabled=true;sp.style.display='inline-block';prog.style.display='block';
   const total=files.length*(1+outcomes.length);let done=0;
 
-  // Extract characteristics
+  // ── Extract characteristics ──
   const charRows=[];
   for(const f of files){
-    stat.textContent=`特徵表：${f.name}`;
+    stat.textContent=`📋 特徵表：${f.name}`;
     try{
-      const txt=await readPdf(f,6);
+      const txt=await readPdf(f,8);
       const res=await gemini(
-        `Extract study characteristics from this paper. Return EXACTLY ONE pipe-delimited line with these 6 fields:
-"Author Year" | "Study Design (e.g. RCT, Retrospective cohort)" | "Total N" | "Intervention description" | "Control/Comparison description" | "Outcomes reported"
+`You are a systematic review data extractor. Extract key study characteristics from this paper.
 
-Rules:
-- If a field is not found, write NA
-- No header, no extra lines, no markdown
-- Use the actual author and year from the paper for field 1
+Return EXACTLY ONE line with 6 fields separated by " | " (pipe with spaces):
+StudyID | Design | N | Intervention | Control | Outcomes
+
+Where:
+- StudyID = "FirstAuthor Year"  (e.g. Smith 2020)
+- Design = study design (e.g. RCT, Retrospective cohort, Case-control)
+- N = total number of participants
+- Intervention = brief description of intervention group
+- Control = brief description of control/comparison group
+- Outcomes = main outcomes reported
+
+If a field is truly not found, write NA.
+Output ONLY the single data line. No headers, no explanation, no markdown.
 
 Paper text:
-${txt.substring(0,10000)}`,500);
-      // Find the pipe-delimited line
-      const lines=res.trim().split('\n').filter(l=>l.includes('|'));
-      if(lines.length>0){
-        const cols=lines[0].split('|').map(s=>s.trim().replace(/^"|"$/g,''));
-        // Pad if needed
-        while(cols.length<6) cols.push('NA');
+${txt.substring(0,12000)}`, 800);
+
+      const lines = res.trim().split('\n').filter(l => l.includes('|'));
+      if(lines.length > 0){
+        const cols = lines[0].split('|').map(s=>s.trim().replace(/^["']|["']$/g,''));
+        while(cols.length < 6) cols.push('NA');
         charRows.push(cols.slice(0,6));
       }
-    }catch(e){notify(`特徵表 ${f.name} 失敗: ${e.message}`,'warn');}
-    done++;bar.style.width=`${done/total*100}%`;
+    }catch(e){ notify(`特徵表 ${f.name} 失敗: ${e.message}`,'warn'); }
+    done++; bar.style.width=`${done/total*100}%`;
   }
-  if(charRows.length) S.charTable=charRows;
+  if(charRows.length) S.charTable = charRows;
 
-  // Extract outcome datasets
-  S.extractedDS={};
+  // ── Extract outcome datasets ──
+  S.extractedDS = {};
   for(const out of outcomes){
-    const dtype=S.outcomeTypes[out]||'Binary';
-    const outRows=[];
+    const dtype = S.outcomeTypes[out] || 'Binary';
+    const outRows = [];
     for(const f of files){
-      stat.textContent=`萃取 "${out}"：${f.name}`;
+      stat.textContent=`📊 萃取「${out}」：${f.name}`;
       try{
-        const txt=await readPdf(f);
+        const txt = await readPdf(f);
         let prompt;
-        if(dtype==='Binary'){
-          prompt=`Extract binary outcome data for "${out}" from this paper.
-Return EXACTLY ONE pipe-delimited data line:
-"Author Year" | "Population description" | "Intervention arm details" | "Control arm details" | "Tx Events (number)" | "Tx Total (number)" | "Ctrl Events (number)" | "Ctrl Total (number)"
+        if(dtype === 'Binary'){
+          prompt =
+`You are extracting data for a meta-analysis. Find numerical data for the outcome "${out}" in this paper.
+
+Return ONE data line per study arm comparison found, using this format:
+StudyID | Population | Tx Arm | Ctrl Arm | Tx Events | Tx N | Ctrl Events | Ctrl N
 
 Rules:
-- StudyID must be "FirstAuthor Year" from the actual paper (e.g., "Smith 2020")
-- Events and Total must be plain numbers (e.g., 45, 100)
-- If data not found, return the word: NOT_FOUND
-- No header, no markdown, just one data line
+- StudyID = "FirstAuthor Year" from paper
+- Tx Events, Tx N, Ctrl Events, Ctrl N = plain integers only
+- If this outcome is not reported in the paper, return: NOT_FOUND
+- Output ONLY the data line(s). No headers, no explanation.
 
-Paper text:
-${txt.substring(0,22000)}`;
+Paper text (first 18000 chars):
+${txt.substring(0,18000)}`;
         } else {
-          prompt=`Extract continuous outcome data for "${out}" from this paper.
-Return EXACTLY ONE pipe-delimited data line:
-"Author Year" | "Population description" | "Intervention arm details" | "Control arm details" | "Tx Mean" | "Tx SD" | "Tx N" | "Ctrl Mean" | "Ctrl SD" | "Ctrl N"
+          prompt =
+`You are extracting data for a meta-analysis. Find numerical data for the outcome "${out}" in this paper.
+
+Return ONE data line per study arm comparison found, using this format:
+StudyID | Population | Tx Arm | Ctrl Arm | Tx Mean | Tx SD | Tx N | Ctrl Mean | Ctrl SD | Ctrl N
 
 Rules:
-- StudyID must be "FirstAuthor Year" from the actual paper (e.g., "Smith 2020")
-- Mean, SD, N must be plain numbers
-- If data not found, return the word: NOT_FOUND
-- No header, no markdown, just one data line
+- StudyID = "FirstAuthor Year" from paper
+- Mean, SD, N = plain numbers only
+- If this outcome is not reported in the paper, return: NOT_FOUND
+- Output ONLY the data line(s). No headers, no explanation.
 
-Paper text:
-${txt.substring(0,22000)}`;
+Paper text (first 18000 chars):
+${txt.substring(0,18000)}`;
         }
-        const res=await gemini(prompt,500);
-        if(res.trim().toUpperCase().includes('NOT_FOUND')){done++;bar.style.width=`${done/total*100}%`;continue;}
-        const lines=res.trim().split('\n').filter(l=>l.includes('|'));
-        lines.forEach(line=>{
-          const cols=line.split('|').map(s=>s.trim().replace(/^"|"$/g,''));
-          const schema=dtype==='Binary'
-            ?['Study ID','Population','Tx Details','Ctrl Details','Tx Events','Tx Total','Ctrl Events','Ctrl Total']
-            :['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
-          if(cols.length>=schema.length){
-            const row={};schema.forEach((k,i)=>{row[k]=cols[i]||'';});
-            // Validate: at least Study ID and one number field must be non-empty
-            const hasId=row['Study ID']&&row['Study ID']!=='NA';
-            const numFields=dtype==='Binary'?['Tx Events','Tx Total','Ctrl Events','Ctrl Total']:['Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
-            const hasNums=numFields.some(k=>row[k]&&/\d/.test(row[k]));
-            if(hasId&&hasNums) outRows.push(row);
-          }
+
+        const res = await gemini(prompt, 1500);
+
+        if(res.trim().toUpperCase().startsWith('NOT_FOUND') || res.trim().toUpperCase() === 'NOT_FOUND'){
+          done++; bar.style.width=`${done/total*100}%`; continue;
+        }
+
+        const schema = dtype==='Binary'
+          ? ['Study ID','Population','Tx Details','Ctrl Details','Tx Events','Tx Total','Ctrl Events','Ctrl Total']
+          : ['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
+
+        const dataLines = res.trim().split('\n').filter(l => {
+          const u = l.toUpperCase();
+          return l.includes('|') && !u.startsWith('STUDYID') && !u.startsWith('NOT_FOUND') && !u.includes('AUTHOR YEAR');
         });
-      }catch(e){notify(`萃取失敗 ${out}/${f.name}: ${e.message}`,'warn');}
-      done++;bar.style.width=`${done/total*100}%`;
+
+        dataLines.forEach(line => {
+          const cols = line.split('|').map(s => s.trim().replace(/^["']|["']$/g,''));
+          if(cols.length < schema.length) return;
+          const row = {};
+          schema.forEach((k,i) => { row[k] = cols[i] || ''; });
+          // Accept row if Study ID looks real (not a template placeholder)
+          const sid = row['Study ID'] || '';
+          const isPlaceholder = /^(author|studyid|firstauthor|\?|xxx)/i.test(sid);
+          if(!isPlaceholder && sid.length > 1) outRows.push(row);
+        });
+
+      }catch(e){ notify(`萃取失敗 ${out}/${f.name}: ${e.message}`,'warn'); }
+      done++; bar.style.width=`${done/total*100}%`;
     }
-    const schema=dtype==='Binary'
-      ?['Study ID','Population','Tx Details','Ctrl Details','Tx Events','Tx Total','Ctrl Events','Ctrl Total']
-      :['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
-    S.extractedDS[out]={rows:outRows,dtype,schema};
+    const schema = dtype==='Binary'
+      ? ['Study ID','Population','Tx Details','Ctrl Details','Tx Events','Tx Total','Ctrl Events','Ctrl Total']
+      : ['Study ID','Population','Tx Details','Ctrl Details','Tx Mean','Tx SD','Tx Total','Ctrl Mean','Ctrl SD','Ctrl Total'];
+    S.extractedDS[out] = { rows:outRows, dtype, schema };
   }
 
   renderExtractResults();
