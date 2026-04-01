@@ -1009,11 +1009,19 @@ STRICT RULES:
 
       let kws = [];
       try {
-        const res = await gemini(prompt, 500);
-        // Find the pipe-containing line, strip any accidental label prefix
-        const lines = res.trim().split('\n').filter(l => l.includes('|'));
-        let kwLine = (lines[0] || res.trim()).replace(/^[PICO][\s\w().,-]*:\s*/i, '').trim();
-        kws = kwLine.split('|').map(s => s.trim()).filter(s => s.length > 1 && s.length < 80);
+        const res = await gemini(prompt, 600);
+        // Join ALL lines to catch AI line-wrapping mid-list
+        const allLines = res.trim().split('\n');
+        const joined = allLines
+          .map(l => l.replace(/^[PICO][\s\w().,-]*:\s*/i, '').trim())
+          .filter(l => l.length > 0)
+          .join(' | ');
+        kws = joined
+          .split('|')
+          .map(s => s.trim())
+          .filter(s => s.length >= 3 && s.length <= 80 && !/^[\d\s]+$/.test(s))
+          // Deduplicate case-insensitively
+          .filter((s, i, arr) => arr.findIndex(t => t.toLowerCase() === s.toLowerCase()) === i);
       } catch(e) {
         notify(`${item.label} 生成失敗: ${e.message}`, 'warn');
       }
@@ -1049,7 +1057,7 @@ function renderSuggestPanels() {
     const chips = g.candidates.map((c,ci) => {
       const dotColor = !c.uid ? '#d1d5db' : c.meshTerm ? '#059669' : '#f59e0b';
       const dotTitle = !c.uid ? '尚未驗證' : c.meshTerm ? `MeSH: ${c.meshTerm}` : '無對應 MeSH，將用 free-text';
-      return `<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:12.5px" data-gi="${gi}" data-ci="${ci}" class="kw-chip">
+      return `<div style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:12.5px;white-space:nowrap;flex-shrink:0" data-gi="${gi}" data-ci="${ci}" class="kw-chip">
         <span style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0" title="${dotTitle}"></span>
         <span>${c.keyword}</span>
         <span class="kw-rm" style="color:var(--text4);font-size:11px;cursor:pointer;padding-left:3px">✕</span>
