@@ -371,7 +371,7 @@ td input:focus{border-bottom-color:var(--teal)}
             <div style="background:var(--teal-lt);padding:7px 12px;font-size:12px;color:var(--teal-dk);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
               <span>✏️ 可手動編輯後搜尋</span>
               <div style="display:flex;align-items:center;gap:10px">
-                <label class="cb-lbl" style="font-size:12px"><input type="checkbox" id="searchRetmax200"> 限制 200 篇</label>
+                <span style="font-size:12px;color:var(--teal-dk)">自動取得全部結果（最多 10,000 篇）</span>
                 <span id="pubmedResultCount" style="font-size:12px;color:var(--teal-dk);font-weight:600"></span>
               </div>
             </div>
@@ -1426,18 +1426,23 @@ document.getElementById('btnPubmedSearch').addEventListener('click', async()=>{
   btn.disabled=true; sp.style.display='inline-block'; prog.style.display='block';
   bar.style.width='15%'; stat.textContent='正在搜尋 PubMed…'; countEl.textContent='';
   try{
-    const retmax = document.getElementById('searchRetmax200').checked ? 200 : 500;
-    const {total, pmids} = await doEsearch(query, retmax, 'pubmed');
-    bar.style.width='100%';
-    if(!pmids.length){
-      stat.textContent='搜尋完成，無結果';
-      countEl.textContent='0 篇';
+    // Step 1: get total count
+    stat.textContent='正在取得命中篇數…';
+    const {total} = await doEsearch(query, 1, 'pubmed');
+    if(!total){
+      stat.textContent='搜尋完成，無結果'; countEl.textContent='0 篇';
       notify('PubMed 搜尋無結果，請調整策略','warn');
-    } else {
-      stat.textContent=`PubMed 命中 ${total} 篇，已取前 ${pmids.length} 篇`;
-      countEl.textContent=`共 ${total} 篇`;
-      populateStep2(pmids,'PubMed',total);
+      btn.disabled=false; sp.style.display='none'; return;
     }
+    // Step 2: fetch ALL PMIDs (up to 10000)
+    const fetchMax = Math.min(total, 10000);
+    stat.textContent=`命中 ${total} 篇，正在取得全部 PMID（最多 ${fetchMax} 篇）…`;
+    bar.style.width='50%';
+    const {pmids} = await doEsearch(query, fetchMax, 'pubmed');
+    bar.style.width='100%';
+    stat.textContent=`PubMed 命中 ${total} 篇，已取得 ${pmids.length} 篇 PMID`;
+    countEl.textContent=`共 ${total} 篇，已取 ${pmids.length} 篇`;
+    populateStep2(pmids,'PubMed',total);
   }catch(e){ stat.textContent='失敗：'+e.message; notify('PubMed 搜尋失敗：'+e.message,'error'); }
   btn.disabled=false; sp.style.display='none';
 });
@@ -1459,27 +1464,53 @@ document.getElementById('btnMedlineSearch').addEventListener('click', async()=>{
   btn.disabled=true; sp.style.display='inline-block'; prog.style.display='block';
   bar.style.width='15%'; stat.textContent='正在搜尋 MEDLINE subset…'; countEl.textContent='';
   try{
-    const retmax = 500;
-    const {total, pmids} = await doEsearch(medlineQuery, retmax, 'pubmed');
-    bar.style.width='100%';
-    if(!pmids.length){
-      stat.textContent='搜尋完成，無結果';
-      countEl.textContent='0 篇';
+    stat.textContent='正在取得命中篇數…';
+    const {total} = await doEsearch(medlineQuery, 1, 'pubmed');
+    if(!total){
+      stat.textContent='搜尋完成，無結果'; countEl.textContent='0 篇';
       notify('MEDLINE 搜尋無結果，請調整策略','warn');
-    } else {
-      stat.textContent=`MEDLINE 命中 ${total} 篇，已取前 ${pmids.length} 篇`;
-      countEl.textContent=`共 ${total} 篇`;
-      populateStep2(pmids,'MEDLINE',total);
+      btn.disabled=false; sp.style.display='none'; return;
     }
+    const fetchMax = Math.min(total, 10000);
+    stat.textContent=`命中 ${total} 篇，正在取得全部 PMID…`;
+    bar.style.width='50%';
+    const {pmids} = await doEsearch(medlineQuery, fetchMax, 'pubmed');
+    bar.style.width='100%';
+    stat.textContent=`MEDLINE 命中 ${total} 篇，已取得 ${pmids.length} 篇 PMID`;
+    countEl.textContent=`共 ${total} 篇，已取 ${pmids.length} 篇`;
+    populateStep2(pmids,'MEDLINE',total);
   }catch(e){ stat.textContent='失敗：'+e.message; notify('MEDLINE 搜尋失敗：'+e.message,'error'); }
   btn.disabled=false; sp.style.display='none';
 });
 
-// ── TAB 2: SCREENING (FIX 2: parallel batch) ──
-async function fetchPubmed(pmids){
-  const r=await fetch(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${pmids.join(',')}&rettype=medline&retmode=text&email=researcher@example.com`);
-  if(!r.ok) throw new Error(`PubMed API error ${r.status}`);
-  return r.text();
+// ── TAB 2: SCREENING ──
+// fetchPubmed: chunks PMIDs into 200/request (NCBI limit), concatenates results
+async function fetchPubmed(pmids) {
+  const CHUNK = 200;
+  const chunks = [];
+  for (let i = 0; i < pmids.length; i += CHUNK) {
+    chunks.push(pmids.slice(i, i + CHUNK));
+  }
+  const results = [];
+  for (const chunk of chunks) {
+    const url = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${chunk.join(',')}&rettype=medline&retmode=text&email=researcher@example.com`;
+    let attempt = 0;
+    while (attempt < 3) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const txt = await r.text();
+        results.push(txt);
+        break;
+      } catch(e) {
+        attempt++;
+        if (attempt >= 3) throw new Error(`PubMed efetch 失敗（已重試3次）：${e.message}`);
+        await sleep(1000 * attempt); // back-off: 1s, 2s
+      }
+    }
+    if (chunks.length > 1) await sleep(350); // be kind to NCBI rate limit
+  }
+  return results.join('\n\n');
 }
 function parseMedline(txt){
   return txt.split(/\n(?=PMID- )/).map(rec=>{
@@ -1573,10 +1604,25 @@ document.getElementById('btnScreen').addEventListener('click', async () => {
   document.getElementById('btnStopScreen').style.display = 'inline-flex';
 
   try {
-    stat.textContent = `正在從 PubMed 抓取 ${pmids.length} 篇摘要…`; bar.style.width = '5%';
-    const medline = await fetchPubmed(pmids);
+    const totalPmids = pmids.length;
+    const chunks = Math.ceil(totalPmids / 200);
+    stat.textContent = `正在從 PubMed 抓取 ${totalPmids} 篇摘要（分 ${chunks} 批次請求）…`; bar.style.width = '5%';
+    let medline;
+    try {
+      medline = await fetchPubmed(pmids);
+    } catch(fetchErr) {
+      notify(`PubMed 摘要抓取失敗：${fetchErr.message}`, 'error');
+      btn.disabled=false; sp.style.display='none';
+      document.getElementById('btnStopScreen').style.display='none';
+      return;
+    }
     const arts = parseMedline(medline);
-    if (!arts.length) { notify('無法解析 PubMed 資料','error'); return; }
+    if (!arts.length) {
+      notify('無法解析 PubMed 資料，請確認 PMID 是否正確', 'error');
+      btn.disabled=false; sp.style.display='none';
+      document.getElementById('btnStopScreen').style.display='none';
+      return;
+    }
 
     SCREEN_PENDING_ARTS = [...arts];
     await runScreenBatch(pico, bar, stat);
