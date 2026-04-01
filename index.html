@@ -1528,9 +1528,9 @@ async function runScreenBatch(pico, bar, stat) {
   bar.style.width = '10%';
 
   const prompts = batch.map(a =>
-    `You are a systematic review screener. Assess whether to INCLUDE or EXCLUDE this study based on the PICO below.
+    `You are a systematic review screener.
 
-PICO:
+PICO criteria:
 P: ${pico.p||'Not specified'}
 I: ${pico.i||'Not specified'}
 C: ${pico.c||'Not specified'}
@@ -1539,14 +1539,17 @@ O: ${pico.o1||'Not specified'}${pico.o2 ? '; '+pico.o2 : ''}
 Title: ${a.title}
 Abstract: ${(a.abstract||'(no abstract)').substring(0,700)}
 
-Reply with EXACTLY these labeled lines:
-STATUS: [INCLUDED or EXCLUDED]
-REASON: [繁體中文，限100字以內。格式：①設計：一句話。②族群：一句話。③介入：一句話。④結果：一句話。⑤結論：一句話。]
-DESIGN: [study design]
-POPULATION: [population]
-INTERVENTION: [intervention]
-CONTROL: [control]
-OUTCOMES: [outcomes]`);
+Output EXACTLY 7 lines. Each line starts with its label and a colon.
+Do NOT wrap to the next line. Do NOT add blank lines. Do NOT add extra text.
+
+STATUS: INCLUDED or EXCLUDED (one word only)
+REASON: 繁體中文，2-3句話說明：(1)研究設計是否符合 (2)研究族群是否符合 (3)介入/結果是否符合 (4)最終決定。全部寫在這一行，不換行。
+DESIGN: one short phrase
+POPULATION: one short phrase
+INTERVENTION: one short phrase
+CONTROL: one short phrase
+OUTCOMES: one short phrase`);
+
 
   // Run with abort awareness: sub-batches of 5, check abort between each
   const aiResults = new Array(batch.length).fill(null);
@@ -1570,24 +1573,31 @@ OUTCOMES: [outcomes]`);
     batchInfo.textContent = `已完成 ${alreadyDone + idx} / ${grandTotal} 篇`;
   }
 
-  // Labeled-field parser — reason can be multi-line, no pipe needed
+  // Simple line-by-line parser — no regex, no multiline bugs
   function parseLabeledScreenResult(raw) {
-    const getField = (label) => {
-      const re = new RegExp(`^${label}:\\s*([\\s\\S]*?)(?=\\n(?:STATUS|REASON|DESIGN|POPULATION|INTERVENTION|CONTROL|OUTCOMES):|$)`, 'im');
-      const m = raw.match(re);
-      return m ? m[1].trim() : '';
-    };
-    const statusRaw = getField('STATUS');
+    const lines = raw.split('\n');
+    const fields = {};
+    for (const line of lines) {
+      const colon = line.indexOf(':');
+      if (colon === -1) continue;
+      const label = line.substring(0, colon).trim().toUpperCase().replace(/\s+/g,'');
+      const value = line.substring(colon + 1).trim();
+      if (value) fields[label] = value;
+    }
+    // Also accept common variants
+    const get = (...keys) => { for (const k of keys) { if (fields[k]) return fields[k]; } return ''; };
+    const statusRaw = get('STATUS');
     return {
       status:       statusRaw.toUpperCase().includes('INCL') ? 'INCLUDED' : 'EXCLUDED',
-      reason:       getField('REASON')       || '（AI 未提供理由）',
-      design:       getField('DESIGN')       || '',
-      population:   getField('POPULATION')   || '',
-      intervention: getField('INTERVENTION') || '',
-      control:      getField('CONTROL')      || '',
-      outcomes:     getField('OUTCOMES')     || '',
+      reason:       get('REASON')       || '（AI 未提供理由）',
+      design:       get('DESIGN')       || '',
+      population:   get('POPULATION')   || '',
+      intervention: get('INTERVENTION') || '',
+      control:      get('CONTROL')      || '',
+      outcomes:     get('OUTCOMES')     || '',
     };
   }
+
 
   const processed = aborted ? batch.slice(0, idx) : batch;
   const newResults = processed.map((a, i) => {
@@ -1664,10 +1674,16 @@ function renderScreenResults(results,filter){
   function formatReason(text){
     if(!text||text==='（無說明）'||text==='（AI 未提供理由）')
       return `<span style="color:var(--text4);font-style:italic">${text||'（無說明）'}</span>`;
-    // Replace circled numbers with inline colored badges, keep on same flow
-    return text
-      .replace(/([①②③④⑤⑥])/g, '<span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:#0891b2;color:#fff;font-weight:700;font-size:11px;border-radius:50%;margin:0 3px 0 8px;flex-shrink:0;vertical-align:middle">$1</span>')
-      .replace(/^(<span[^>]*>①<\/span>)/,'$1'); // no leading space before first
+    // Render plain text. If AI still uses (1)(2) or ① style markers, make them visible badges.
+    const escaped = text
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // Turn (1) (2) (3) (4) or ① ② ③ ④ ⑤ into small badges
+    return escaped
+      .replace(/\(([1-6])\)/g, '<span style="display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;background:#0891b2;color:#fff;font-weight:700;font-size:10px;border-radius:50%;margin:0 3px;vertical-align:middle">$1</span>')
+      .replace(/([①②③④⑤⑥])/g, (m) => {
+        const n = '①②③④⑤⑥'.indexOf(m)+1;
+        return `<span style="display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;background:#0891b2;color:#fff;font-weight:700;font-size:10px;border-radius:50%;margin:0 3px;vertical-align:middle">${n}</span>`;
+      });
   }
 
   el.innerHTML=list.map(r=>{
