@@ -915,51 +915,90 @@ document.getElementById('btnSuggestMesh').addEventListener('click', async () => 
   if (!pico.p) return notify('請先填寫 PICO', 'warn');
   const btn = document.getElementById('btnSuggestMesh'), sp = document.getElementById('spSuggest');
   btn.disabled = true; sp.style.display = 'inline-block';
+
+  document.getElementById('meshSuggestOut').style.display = 'block';
+  document.getElementById('meshSuggestPanels').innerHTML =
+    '<div style="padding:12px;color:var(--text3);font-size:13px">⏳ AI 正在為每個 PICO 元素分別生成關鍵詞，請稍候…</div>';
+
   try {
-    const res = await gemini(
-`You are a PubMed/MEDLINE MeSH expert. For each PICO component, generate a COMPREHENSIVE list of English candidate keywords to validate against the MeSH database. Include synonyms, abbreviations, trade names, related broader/narrower terms to maximize search sensitivity.
-
-PICO:
-P (Population): ${pico.p}
-I (Intervention): ${pico.i}
-C (Comparison): ${pico.c}
-O (Outcome): ${pico.o1}${pico.o2 ? '; ' + pico.o2 : ''}
-
-For EACH component, list 5-8 candidate English keywords.
-Use this EXACT format (no extra text, no numbering, no markdown):
-P: keyword1 | keyword2 | keyword3 | keyword4 | keyword5
-I: keyword1 | keyword2 | keyword3 | keyword4 | keyword5
-C: keyword1 | keyword2 | keyword3 | keyword4
-O: keyword1 | keyword2 | keyword3 | keyword4 | keyword5
-
-Rules:
-- Include MeSH-style noun phrases AND common abbreviations AND synonyms
-- For drugs: include generic name, drug class, mechanism
-- For conditions: include clinical synonyms, ICD terms, lay terms
-- For interventions: include specific procedure names, broader category
-- Keep each keyword concise (1-5 words)
-- English only`, 900);
-
     MESH_STATE.groups = [];
-    const labelMap = { P:'Population (P)', I:'Intervention (I)', C:'Comparison (C)', O:'Outcome (O)' };
-    res.trim().split('\n').filter(l=>l.trim()).forEach(line => {
-      const m = line.match(/^([PICO]):\s*(.+)/i);
-      if (!m) return;
-      const key = m[1].toUpperCase();
-      const kws = m[2].split('|').map(s=>s.trim()).filter(s=>s);
+
+    // Query each PICO element individually — guarantees all 4 always produce results
+    const picoItems = [
+      { key:'P', label:'Population (P)',   value: pico.p },
+      { key:'I', label:'Intervention (I)', value: pico.i || 'Not specified' },
+      { key:'C', label:'Comparison (C)',   value: pico.c || 'Not specified' },
+      { key:'O', label:'Outcome (O)',      value: [pico.o1, pico.o2].filter(s=>s).join('; ') || 'Not specified' },
+    ];
+
+    for (const item of picoItems) {
+      document.getElementById('meshSuggestPanels').innerHTML =
+        `<div style="padding:12px 14px;color:var(--text3);font-size:13px">
+           ⏳ 正在生成 <b style="color:var(--teal-dk)">${item.label}</b> 的候選關鍵詞…
+           （已完成 ${MESH_STATE.groups.length} / 4）
+         </div>`;
+
+      const prompt =
+`You are a PubMed/MEDLINE MeSH expert building a systematic review search strategy.
+
+Task: Generate comprehensive English search keywords for ONE PICO component only.
+
+Component: ${item.key} — ${item.label}
+Value: "${item.value}"
+
+Generate exactly 6-8 keywords that cover:
+- The exact concept and direct clinical synonyms
+- Broader category / umbrella term (for sensitivity)
+- Narrower / specific variant terms
+- Common abbreviations or acronyms
+- Alternative names, older terminology, brand-to-generic
+- MeSH-style formal noun phrases
+
+OUTPUT FORMAT: One single line only, keywords separated by " | "
+Example: Endometrial Neoplasms | Uterine cancer | Endometrial carcinoma | Corpus uteri neoplasm | Uterine adenocarcinoma | Endometrial tumor
+
+STRICT RULES:
+- Output ONLY the keyword line. No label prefix, no explanation, no markdown, no numbering.
+- All keywords in English.
+- Each keyword 1-6 words maximum.
+- Complete all keywords on one line — do not cut off.`;
+
+      let kws = [];
+      try {
+        const res = await gemini(prompt, 500);
+        // Find the pipe-containing line, strip any accidental label prefix
+        const lines = res.trim().split('\n').filter(l => l.includes('|'));
+        let kwLine = (lines[0] || res.trim()).replace(/^[PICO][\s\w().,-]*:\s*/i, '').trim();
+        kws = kwLine.split('|').map(s => s.trim()).filter(s => s.length > 1 && s.length < 80);
+      } catch(e) {
+        notify(`${item.label} 生成失敗: ${e.message}`, 'warn');
+      }
+
+      // Always push a group, even if AI failed — use raw PICO value as fallback
+      if (kws.length === 0) {
+        kws = [item.value.substring(0, 60)];
+        notify(`${item.label} 回傳異常，已帶入原始值，請手動補充關鍵詞`, 'warn');
+      }
+
       MESH_STATE.groups.push({
-        picoKey: key, label: labelMap[key]||key,
-        candidates: kws.map(kw => ({ keyword:kw, meshTerm:null, entryTerms:[], uid:null, validated:false, selected:true, scopeNote:'', treeNums:[] }))
+        picoKey: item.key,
+        label: item.label,
+        candidates: kws.map(kw => ({
+          keyword: kw, meshTerm: null, entryTerms: [], uid: null,
+          validated: false, selected: true, scopeNote: '', treeNums: []
+        }))
       });
-    });
+
+      await sleep(350);
+    }
 
     renderSuggestPanels();
-    document.getElementById('meshSuggestOut').style.display = 'block';
+    const total = MESH_STATE.groups.reduce((s,g) => s + g.candidates.length, 0);
+    notify(`所有 PICO 元素關鍵詞生成完成 ✓ 共 ${total} 個候選詞`, 'success');
     await runMeshValidation();
   } catch(e) { notify(e.message, 'error'); }
   btn.disabled = false; sp.style.display = 'none';
 });
-
 function renderSuggestPanels() {
   const el = document.getElementById('meshSuggestPanels');
   el.innerHTML = MESH_STATE.groups.map((g, gi) => `
