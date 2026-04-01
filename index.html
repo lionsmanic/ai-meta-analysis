@@ -2486,99 +2486,178 @@ function renderForest(ma){
   const df=ma.df, res=ma.res, isBin=ma.dtype==='Binary';
   const xf=v=>isBin?Math.exp(v):v;
   const n=df.length;
+  // y positions: studies top-to-bottom (n, n-1, ..., 1)
   const ys=df.map((_,i)=>n-i);
 
   const vals =df.map(r=>xf(r.TE));
   const lows =df.map(r=>xf(r.lower));
   const highs=df.map(r=>xf(r.upper));
   const pValRE=xf(res.TE_pooled), pLowRE=xf(res.lower_pooled), pHighRE=xf(res.upper_pooled);
-  const wF=df.map(r=>1/r.seTE**2), sumWF=wF.reduce((a,b)=>a+b,0);
-  const teFE=df.reduce((s,r,i)=>s+wF[i]*r.TE,0)/sumWF;
-  const seFE=Math.sqrt(1/sumWF);
-  const pValFE=xf(teFE), pLowFE=xf(teFE-1.96*seFE), pHighFE=xf(teFE+1.96*seFE);
 
-  // Simple 4-column layout: Study | plot | RR [CI] | Weight%
-  // Text columns use paper coords, plot uses xaxis domain
-  const plotL=0.42, plotR=0.82;
-  const xStudy=0.00, xRR=0.88, xCI=0.88, xWt=1.00;
+  // Prediction interval: TE_pooled ± t_{k-1,0.975} * sqrt(tau2 + seTE_pooled^2)
+  const k=df.length;
+  // approximate t-value for k-1 df
+  const tVal = k<=2?12.706:k<=3?4.303:k<=5?2.776:k<=10?2.228:k<=20?2.086:1.960;
+  const piSE = Math.sqrt(res.tau2 + res.seTE_pooled**2);
+  const piLow = xf(res.TE_pooled - tVal*piSE);
+  const piHigh= xf(res.TE_pooled + tVal*piSE);
+
+  // Z-test for overall effect
+  const Z = res.TE_pooled / res.seTE_pooled;
+  const pZ = 2*(1-normCDF(Math.abs(Z)));
+
+  // Plot domain (fraction of total width)
+  const plotL=0.52, plotR=0.86;
+
+  // Column x positions (paper fraction)
+  const xStudy=0.00;
+  const xEvTx  =0.26, xTotTx=0.30;
+  const xEvCtrl=0.36, xTotCtrl=0.40;
+  const xWt    =0.47;
+  const xRR    =0.89;  // right-side RR [CI] text column
+
   const TF={color:'#000',size:11.5};
   const annots=[];
-  const hY=n+1.0;
+  const hY=n+1.2;
 
-  // Column headers
+  // ── Header row ──
   annots.push(
-    {x:xStudy,y:hY,xref:'paper',yref:'y',text:'<b>Study</b>',showarrow:false,font:TF,xanchor:'left'},
-    {x:(plotL+plotR)/2,y:hY,xref:'paper',yref:'y',text:`<b>${ma.measure}, Fixed + Random [95% CI]</b>`,showarrow:false,font:{...TF,size:11},xanchor:'center'},
-    {x:xRR,y:hY,xref:'paper',yref:'y',text:`<b>${ma.measure} [95% CI]</b>`,showarrow:false,font:{...TF,size:11},xanchor:'left'},
-    {x:xWt,y:hY,xref:'paper',yref:'y',text:'<b>Weight</b>',showarrow:false,font:{...TF,size:11},xanchor:'right'},
+    {x:xStudy,  y:hY+0.5,xref:'paper',yref:'y',text:'<b>Study</b>',showarrow:false,font:TF,xanchor:'left'},
+    // Experimental group header
+    {x:(xEvTx+xTotTx)/2+0.01,y:hY+0.9,xref:'paper',yref:'y',text:'<b>Experimental</b>',showarrow:false,font:{...TF,size:11},xanchor:'center'},
+    {x:xEvTx,  y:hY+0.5,xref:'paper',yref:'y',text:'<b>Events</b>',showarrow:false,font:{...TF,size:10.5},xanchor:'center'},
+    {x:xTotTx, y:hY+0.5,xref:'paper',yref:'y',text:'<b>Total</b>',showarrow:false,font:{...TF,size:10.5},xanchor:'center'},
+    // Control group header
+    {x:(xEvCtrl+xTotCtrl)/2+0.01,y:hY+0.9,xref:'paper',yref:'y',text:'<b>Control</b>',showarrow:false,font:{...TF,size:11},xanchor:'center'},
+    {x:xEvCtrl, y:hY+0.5,xref:'paper',yref:'y',text:'<b>Events</b>',showarrow:false,font:{...TF,size:10.5},xanchor:'center'},
+    {x:xTotCtrl,y:hY+0.5,xref:'paper',yref:'y',text:'<b>Total</b>',showarrow:false,font:{...TF,size:10.5},xanchor:'center'},
+    // Weight
+    {x:xWt,    y:hY+0.9,xref:'paper',yref:'y',text:'<b>Risk Ratio</b>',showarrow:false,font:{...TF,size:11},xanchor:'center'},
+    {x:xWt,    y:hY+0.5,xref:'paper',yref:'y',text:'<b>Weight</b>',showarrow:false,font:{...TF,size:10.5},xanchor:'center'},
+    // Plot header
+    {x:(plotL+plotR)/2,y:hY+0.9,xref:'paper',yref:'y',text:'<b>Risk Ratio</b>',showarrow:false,font:{...TF,size:11},xanchor:'center'},
+    {x:(plotL+plotR)/2,y:hY+0.5,xref:'paper',yref:'y',text:'<b>MH, Random, 95% CI</b>',showarrow:false,font:{...TF,size:10.5},xanchor:'center'},
+    // Right RR text header
+    {x:xRR,    y:hY+0.9,xref:'paper',yref:'y',text:`<b>${ma.measure}</b>`,showarrow:false,font:{...TF,size:11},xanchor:'left'},
+    {x:xRR,    y:hY+0.5,xref:'paper',yref:'y',text:'<b>MH, Random, 95% CI</b>',showarrow:false,font:{...TF,size:10.5},xanchor:'left'},
   );
+
+  // ── Per-study rows ──
+  // Fixed-effect weights (for common weight column)
+  const wF=df.map(r=>1/r.seTE**2), sumWF=wF.reduce((a,b)=>a+b,0);
 
   df.forEach((r,i)=>{
     const y=ys[i], sid=r['Study ID']||`Study ${i+1}`;
     const v=vals[i], lo=lows[i], hi=highs[i];
     const wt=(r.weight||0).toFixed(1)+'%';
-    const rrTxt=`${v.toFixed(2)} [${lo.toFixed(2)}; ${hi.toFixed(2)}]`;
+    const evTx  = (r['Tx Events']  !==undefined && r['Tx Events']  !=='') ? r['Tx Events']   : '';
+    const totTx = (r['Tx Total']   !==undefined && r['Tx Total']   !=='') ? r['Tx Total']    : '';
+    const evCtrl= (r['Ctrl Events']!==undefined && r['Ctrl Events']!=='') ? r['Ctrl Events'] : '';
+    const totCtrl=(r['Ctrl Total'] !==undefined && r['Ctrl Total'] !=='') ? r['Ctrl Total']  : '';
+    const rrTxt = `${v.toFixed(2)} [${lo.toFixed(2)}; ${hi.toFixed(2)}]`;
     annots.push(
-      {x:xStudy,y,xref:'paper',yref:'y',text:sid,showarrow:false,font:{size:11.5,color:'#000'},xanchor:'left'},
-      {x:xRR,   y,xref:'paper',yref:'y',text:rrTxt,showarrow:false,font:{size:11,color:'#000'},xanchor:'left'},
-      {x:xWt,   y,xref:'paper',yref:'y',text:wt,   showarrow:false,font:{size:11,color:'#555'},xanchor:'right'},
+      {x:xStudy,  y,xref:'paper',yref:'y',text:sid,  showarrow:false,font:{size:11.5,color:'#000'},xanchor:'left'},
+      {x:xEvTx,   y,xref:'paper',yref:'y',text:String(evTx),  showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xTotTx,  y,xref:'paper',yref:'y',text:String(totTx), showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xEvCtrl, y,xref:'paper',yref:'y',text:String(evCtrl),showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xTotCtrl,y,xref:'paper',yref:'y',text:String(totCtrl),showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xWt,     y,xref:'paper',yref:'y',text:wt,   showarrow:false,font:{size:11,color:'#000'},xanchor:'center'},
+      {x:xRR,     y,xref:'paper',yref:'y',text:rrTxt,showarrow:false,font:{size:11,color:'#000'},xanchor:'left'},
     );
   });
 
-  const yFE=-0.5, yRE=-1.3;
-  const rrFE=`<b>${pValFE.toFixed(2)} [${pLowFE.toFixed(2)}; ${pHighFE.toFixed(2)}]</b>`;
-  const rrRE=`<b>${pValRE.toFixed(2)} [${pLowRE.toFixed(2)}; ${pHighRE.toFixed(2)}]</b>`;
+  // ── Totals row ──
+  const yTotal=-0.6, yPred=-1.4;
+  const totEvTx  = isBin ? df.reduce((s,r)=>s+(+r['Tx Events']  ||0),0) : '';
+  const totTotTx = isBin ? df.reduce((s,r)=>s+(+r['Tx Total']   ||0),0) : '';
+  const totEvCtrl= isBin ? df.reduce((s,r)=>s+(+r['Ctrl Events']||0),0) : '';
+  const totTotCtrl=isBin ? df.reduce((s,r)=>s+(+r['Ctrl Total'] ||0),0) : '';
+
   annots.push(
-    {x:xStudy,y:yFE,xref:'paper',yref:'y',text:'<b>Total (common effect)</b>',showarrow:false,font:{size:12,color:'#000'},xanchor:'left'},
-    {x:xRR,   y:yFE,xref:'paper',yref:'y',text:rrFE,showarrow:false,font:{size:11,color:'#000'},xanchor:'left'},
-    {x:xWt,   y:yFE,xref:'paper',yref:'y',text:'<b>100.0%</b>',showarrow:false,font:{size:11,color:'#000'},xanchor:'right'},
-    {x:xStudy,y:yRE,xref:'paper',yref:'y',text:'<b>Total (random effect)</b>',showarrow:false,font:{size:12,color:'#000'},xanchor:'left'},
-    {x:xRR,   y:yRE,xref:'paper',yref:'y',text:rrRE,showarrow:false,font:{size:11,color:'#000'},xanchor:'left'},
-    {x:xWt,   y:yRE,xref:'paper',yref:'y',text:'<b>100.0%</b>',showarrow:false,font:{size:11,color:'#000'},xanchor:'right'},
-    {x:xStudy,y:yRE-0.85,xref:'paper',yref:'y',
-     text:`Heterogeneity: Tau²=${res.tau2.toFixed(4)}; Chi²=${res.Q.toFixed(2)}, df=${n-1} (P=${res.p_Q.toFixed(4)}); I²=${res.I2.toFixed(1)}%`,
+    {x:xStudy,  y:yTotal,xref:'paper',yref:'y',text:'<b>Total (95% CI)</b>',showarrow:false,font:{size:12,color:'#000'},xanchor:'left'},
+    {x:xTotTx,  y:yTotal,xref:'paper',yref:'y',text:`<b>${totTotTx}</b>`,showarrow:false,font:{size:11.5,color:'#000'},xanchor:'center'},
+    {x:xTotCtrl,y:yTotal,xref:'paper',yref:'y',text:`<b>${totTotCtrl}</b>`,showarrow:false,font:{size:11.5,color:'#000'},xanchor:'center'},
+    {x:xWt,     y:yTotal,xref:'paper',yref:'y',text:'<b>100.0%</b>',showarrow:false,font:{size:11.5,color:'#000'},xanchor:'center'},
+    {x:xRR,     y:yTotal,xref:'paper',yref:'y',text:`<b>${pValRE.toFixed(2)} [${pLowRE.toFixed(2)}; ${pHighRE.toFixed(2)}]</b>`,showarrow:false,font:{size:11.5,color:'#000'},xanchor:'left'},
+    // Prediction interval row
+    {x:xStudy,  y:yPred, xref:'paper',yref:'y',text:'<b>Prediction interval</b>',showarrow:false,font:{size:11.5,color:'#000'},xanchor:'left'},
+    {x:xRR,     y:yPred, xref:'paper',yref:'y',text:`<b>[${piLow.toFixed(2)}; ${piHigh.toFixed(2)}]</b>`,showarrow:false,font:{size:11.5,color:'#000'},xanchor:'left'},
+    // Heterogeneity & test
+    {x:0,y:yPred-1.0,xref:'paper',yref:'y',
+     text:`Heterogeneity: Tau² = ${res.tau2.toFixed(4)}; Chi² = ${res.Q.toFixed(2)}, df = ${k-1} (P = ${res.p_Q.toFixed(4)}); I² = ${res.I2.toFixed(1)}%`,
      showarrow:false,font:{size:10.5,color:'#333'},xanchor:'left'},
-    {x:plotL+0.01,y:yRE-1.7,xref:'paper',yref:'y',text:'← Favours HRT',showarrow:false,font:{size:10,color:'#333'},xanchor:'left'},
-    {x:plotR-0.01,y:yRE-1.7,xref:'paper',yref:'y',text:'Favours Control →',showarrow:false,font:{size:10,color:'#333'},xanchor:'right'},
+    {x:0,y:yPred-1.8,xref:'paper',yref:'y',
+     text:`Test for overall effect: Z = ${Z.toFixed(2)} (P = ${pZ.toFixed(4)})`,
+     showarrow:false,font:{size:10.5,color:'#333'},xanchor:'left'},
+    // Favours labels
+    {x:plotL+0.01,y:yPred-2.7,xref:'paper',yref:'y',text:'← Favours HRT',showarrow:false,font:{size:10,color:'#333'},xanchor:'left'},
+    {x:plotR-0.01,y:yPred-2.7,xref:'paper',yref:'y',text:'Favours Control →',showarrow:false,font:{size:10,color:'#333'},xanchor:'right'},
+    {x:(plotL+plotR)/2,y:yPred-3.2,xref:'paper',yref:'y',text:`${ma.measure}`,showarrow:false,font:{size:10.5,color:'#000'},xanchor:'center'},
   );
 
-  const allX=[...vals,...lows,...highs,pLowFE,pHighFE,pLowRE,pHighRE].filter(v=>v>0);
-  const xMin=Math.min(...allX)*0.5, xMax=Math.max(...allX)*2;
+  // ── x-axis range ──
+  const allX=[...vals,...lows,...highs,pLowRE,pHighRE,piLow,piHigh].filter(v=>v>0&&isFinite(v));
+  const xMinRaw=Math.min(...allX), xMaxRaw=Math.max(...allX);
+  const xMin=isBin?Math.max(0.01, Math.pow(10,Math.floor(Math.log10(xMinRaw)))): xMinRaw*0.8;
+  const xMax=isBin?Math.pow(10,Math.ceil(Math.log10(xMaxRaw))*1+0.3): xMaxRaw*1.2;
 
-  Plotly.react('forestPlot',[
-    {type:'scatter',x:vals,y:ys,mode:'markers',
-     marker:{symbol:'square',size:df.map(r=>Math.max(7,Math.min(18,r.weight*0.65))),
-       color:'#1a4e8f',line:{color:'#1a4e8f',width:0.5}},
-     error_x:{type:'data',symmetric:false,array:vals.map((v,i)=>highs[i]-v),arrayminus:vals.map((v,i)=>v-lows[i]),
-       color:'#000000',thickness:1.5,width:4},
-     hovertemplate:df.map((r,i)=>`<b>${r['Study ID']||''}</b><br>${ma.measure}:${vals[i].toFixed(3)}<br>CI:[${lows[i].toFixed(3)},${highs[i].toFixed(3)}]<br>Wt:${(r.weight||0).toFixed(1)}%<extra></extra>`),
+  // ── Traces ──
+  const traces=[
+    // Study squares (size ∝ weight, blue fill)
+    {type:'scatter', x:vals, y:ys, mode:'markers',
+     marker:{symbol:'square',
+             size:df.map(r=>Math.max(6,Math.min(20, r.weight*0.65))),
+             color:'#1a4e8f', line:{color:'#1a4e8f',width:0.5}},
+     error_x:{type:'data',symmetric:false,
+              array:vals.map((v,i)=>highs[i]-v),
+              arrayminus:vals.map((v,i)=>v-lows[i]),
+              color:'#000000', thickness:1.5, width:4},
+     hovertemplate:df.map((r,i)=>`<b>${r['Study ID']||''}</b><br>${ma.measure}: ${vals[i].toFixed(3)}<br>95% CI: [${lows[i].toFixed(3)}, ${highs[i].toFixed(3)}]<br>Weight: ${(r.weight||0).toFixed(1)}%<extra></extra>`),
      showlegend:false},
-    {type:'scatter',x:[pValFE],y:[yFE],mode:'markers',
-     marker:{symbol:'diamond',size:16,color:'#000',line:{color:'#000',width:1}},
-     error_x:{type:'data',symmetric:false,array:[pHighFE-pValFE],arrayminus:[pValFE-pLowFE],color:'#000',thickness:2,width:6},
-     hovertemplate:`<b>Fixed Effect</b><br>${pValFE.toFixed(3)} [${pLowFE.toFixed(3)},${pHighFE.toFixed(3)}]<extra></extra>`,showlegend:false},
-    {type:'scatter',x:[pValRE],y:[yRE],mode:'markers',
-     marker:{symbol:'diamond',size:22,color:'#000',line:{color:'#000',width:1}},
-     error_x:{type:'data',symmetric:false,array:[pHighRE-pValRE],arrayminus:[pValRE-pLowRE],color:'#000',thickness:2.5,width:8},
-     hovertemplate:`<b>Random Effect</b><br>${pValRE.toFixed(3)} [${pLowRE.toFixed(3)},${pHighRE.toFixed(3)}]<extra></extra>`,showlegend:false},
-  ],{...BASE,
-    xaxis:{type:isBin?'log':'linear',domain:[plotL,plotR],
-      range:isBin?[Math.log10(xMin),Math.log10(xMax)]:[xMin,xMax],
-      showgrid:false,zeroline:false,showline:true,linecolor:'#000',mirror:false,
-      tickfont:{color:'#000',size:10.5},tickformat:isBin?'.2r':''},
-    yaxis:{range:[yRE-2.2,n+1.5],showticklabels:false,showgrid:false,zeroline:false},
+    // Pooled diamond (black, random effects)
+    {type:'scatter', x:[pValRE], y:[yTotal], mode:'markers',
+     marker:{symbol:'diamond', size:24, color:'#000000', line:{color:'#000000',width:1}},
+     error_x:{type:'data',symmetric:false,array:[pHighRE-pValRE],arrayminus:[pValRE-pLowRE],
+              color:'#000000', thickness:2.5, width:8},
+     hovertemplate:`<b>Total (RE)</b><br>${ma.measure}: ${pValRE.toFixed(3)}<br>[${pLowRE.toFixed(3)}, ${pHighRE.toFixed(3)}]<extra></extra>`,
+     showlegend:false},
+    // Prediction interval (red bar)
+    {type:'scatter', x:[piLow, piHigh], y:[yPred, yPred], mode:'lines',
+     line:{color:'#cc0000', width:5},
+     hovertemplate:`Prediction interval: [${piLow.toFixed(3)}, ${piHigh.toFixed(3)}]<extra></extra>`,
+     showlegend:false},
+  ];
+
+  Plotly.react('forestPlot', traces, {
+    ...BASE,
+    xaxis:{
+      type: isBin?'log':'linear',
+      domain:[plotL, plotR],
+      range: isBin?[Math.log10(xMin),Math.log10(xMax)]:[xMin,xMax],
+      showgrid:false, zeroline:false, showline:true, linecolor:'#000', mirror:false,
+      tickfont:{color:'#000',size:10.5},
+      tickformat: isBin?'.2r':'',
+      ticks:'outside', ticklen:4,
+    },
+    yaxis:{
+      range:[yPred-3.8, n+2.2],
+      showticklabels:false, showgrid:false, zeroline:false,
+    },
     shapes:[
-      {type:'line',x0:isBin?1:0,x1:isBin?1:0,y0:yRE-0.3,y1:n+0.5,xref:'x',yref:'y',line:{color:'#555',dash:'dot',width:1}},
+      // Header separator line
       {type:'line',x0:0,x1:1,y0:n+0.5,y1:n+0.5,xref:'paper',yref:'y',line:{color:'#000',width:1.2}},
+      // Before totals separator line
       {type:'line',x0:0,x1:1,y0:0.5,y1:0.5,xref:'paper',yref:'y',line:{color:'#000',width:1.2}},
+      // Null line (RR=1 or SMD=0)
+      {type:'line',x0:isBin?1:0,x1:isBin?1:0,y0:yPred-0.3,y1:n+0.5,xref:'x',yref:'y',line:{color:'#555',dash:'dot',width:1}},
     ],
-    annotations:annots,
-    margin:{l:10,r:10,t:40,b:50},
-    height:Math.max(360,n*38+220),
+    annotations: annots,
+    margin:{l:10, r:10, t:50, b:50},
+    height: Math.max(380, n*36+280),
     dragmode:false,
-  },{responsive:true,displayModeBar:true,
-    modeBarButtonsToRemove:['zoom2d','pan2d','select2d','lasso2d','resetScale2d'],
-    toImageButtonOptions:{filename:'forest_plot',scale:2}});
+  },{responsive:true, displayModeBar:true,
+     modeBarButtonsToRemove:['zoom2d','pan2d','select2d','lasso2d','resetScale2d'],
+     toImageButtonOptions:{filename:'forest_plot', scale:2}});
 }
 
 // ── FUNNEL PLOT (triangular, correct log scale) ──────────────
