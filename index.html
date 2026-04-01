@@ -827,7 +827,7 @@ function updateSbPico(){
   const any=pico.p||pico.i||pico.c||pico.o1;
   if(!any){el.innerHTML='<div class="sb-pico-row" style="color:rgba(255,255,255,.2);font-size:12px;font-style:italic">尚未設定…</div>';return;}
   const r=(tag,val)=>val?`<div class="sb-pico-row"><b>${tag}:</b> ${val.substring(0,55)}${val.length>55?'…':''}</div>`:'';
-  el.innerHTML=r('P',pico.p)+r('I',pico.i)+r('C',pico.c)+r('O1',pico.o1);
+  el.innerHTML=r('P',pico.p)+r('I',pico.i)+r('C',pico.c)+r('O1',pico.o1)+r('O2',pico.o2);
 }
 ['picoP','picoI','picoC','picoO1','picoO2','researchTopic'].forEach(id=>{
   document.getElementById(id).addEventListener('input',()=>{
@@ -1427,12 +1427,28 @@ async function fetchPubmed(pmids){
 }
 function parseMedline(txt){
   return txt.split(/\n(?=PMID- )/).map(rec=>{
-    const lines=rec.split('\n');
-    const g=p=>{const l=lines.find(ln=>ln.startsWith(p));return l?l.slice(p.length).trim():'';};
-    const ga=p=>lines.filter(ln=>ln.startsWith(p)).map(ln=>ln.slice(p.length).trim());
-    const pmid=g('PMID- '),title=g('TI  - '),ab=g('AB  - '),year=g('DP  - ').slice(0,4);
-    const au=ga('FAU - '),fa=au[0]?au[0].split(',')[0].trim():'Unknown';
-    return{pmid,title,abstract:ab,year,firstAuthor:fa,studyId:`${fa} ${year}`};
+    const lines = rec.split('\n');
+    // MEDLINE wraps long fields — continuation lines start with 6 spaces
+    const fields = {};
+    let lastTag = null;
+    for (const line of lines) {
+      const m = line.match(/^([A-Z]{2,4}\d*  - )(.*)/);
+      if (m) {
+        lastTag = m[1];
+        fields[lastTag] = (fields[lastTag] ? fields[lastTag]+' ' : '') + m[2].trim();
+      } else if (lastTag && line.startsWith('      ')) {
+        fields[lastTag] = (fields[lastTag]||'') + ' ' + line.trim();
+      }
+    }
+    const g  = p  => (fields[p]||'').trim();
+    const ga = p  => lines.filter(ln=>ln.startsWith(p)).map(ln=>ln.slice(p.length).trim());
+    const pmid  = g('PMID- ');
+    const title = g('TI  - ');
+    const ab    = g('AB  - ');
+    const year  = g('DP  - ').slice(0,4);
+    const au = ga('FAU - ');
+    const fa = au[0] ? au[0].split(',')[0].trim() : 'Unknown';
+    return { pmid, title, abstract:ab, year, firstAuthor:fa, studyId:`${fa} ${year}` };
   }).filter(r=>r.pmid);
 }
 
@@ -1746,11 +1762,11 @@ function renderScreenResults(results,filter){
         <span style="background:${statusBg};color:${statusColor};font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px">${statusText}</span>
         <span style="font-size:12px;color:var(--text3);margin-left:auto;font-style:italic">${r.studyId||''}</span>
       </div>
-      <div style="padding:11px 14px 8px;font-size:14.5px;font-weight:700;color:var(--text);line-height:1.45">${r.title||'(no title)'}</div>
+      <div style="padding:11px 14px 8px;font-size:14.5px;font-weight:700;color:var(--text);line-height:1.45;word-break:break-word;overflow-wrap:anywhere">${r.title||'(no title)'}</div>
       ${detailHtml}
       <div style="margin:0 14px 14px;background:${reasonBg};border:1px solid ${reasonBorder};border-radius:7px;padding:13px 16px">
         <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:${reasonLabelColor};margin-bottom:9px">${reasonLabel}</div>
-        <div style="font-size:14px;color:var(--text2);line-height:1.85">${formatReason(r.reason)}</div>
+        <div style="font-size:14px;color:var(--text2);line-height:1.85;word-break:break-word;overflow-wrap:anywhere;white-space:normal">${formatReason(r.reason)}</div>
       </div>
     </div>`;
   }).join('');
