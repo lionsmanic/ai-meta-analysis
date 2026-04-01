@@ -2104,30 +2104,35 @@ document.getElementById('btnExtract').addEventListener('click',async()=>{
     try{
       const txt=await readPdf(f,8);
       const res=await gemini(
-`You are a systematic review data extractor. Extract key study characteristics from this paper.
+`You are a systematic review data extractor. Extract study characteristics from this paper.
 
-Return EXACTLY ONE line with 6 fields separated by " | " (pipe with spaces):
-StudyID | Design | N | Intervention | Control | Outcomes
+Return EXACTLY ONE line with 11 fields separated by " | " (pipe with spaces):
+StudyID | Design | Population | Total N | Tx Arm N | Tx Treatment | Ctrl Arm N | Ctrl Treatment | Primary Outcomes | Main Conclusion | Follow-up
 
 Where:
-- StudyID = "FirstAuthor Year"  (e.g. Smith 2020)
+- StudyID = "FirstAuthor Year" (e.g. Smith 2020)
 - Design = study design (e.g. RCT, Retrospective cohort, Case-control)
-- N = total number of participants
-- Intervention = brief description of intervention group
-- Control = brief description of control/comparison group
-- Outcomes = main outcomes reported
+- Population = patient population / cohort description (age, disease stage, setting)
+- Total N = total number of participants (integer)
+- Tx Arm N = number in intervention/treatment arm
+- Tx Treatment = intervention/treatment description (concise)
+- Ctrl Arm N = number in control arm
+- Ctrl Treatment = control/comparison description (concise)
+- Primary Outcomes = main outcomes measured
+- Main Conclusion = 1 sentence key finding or conclusion
+- Follow-up = follow-up duration (e.g. 5 years, 24 months, NA)
 
-If a field is truly not found, write NA.
-Output ONLY the single data line. No headers, no explanation, no markdown.
+If a field is truly not found, write NA. All fields on ONE line, separated by |.
+Output ONLY the data line. No headers, no explanation, no markdown.
 
 Paper text:
-${txt.substring(0,12000)}`, 800);
+${txt.substring(0,14000)}`, 1200);
 
       const lines = res.trim().split('\n').filter(l => l.includes('|'));
       if(lines.length > 0){
         const cols = lines[0].split('|').map(s=>s.trim().replace(/^["']|["']$/g,''));
-        while(cols.length < 6) cols.push('NA');
-        charRows.push(cols.slice(0,6));
+        while(cols.length < 11) cols.push('NA');
+        charRows.push(cols.slice(0,11));
       }
     }catch(e){ notify(`特徵表 ${f.name} 失敗: ${e.message}`,'warn'); }
     done++; bar.style.width=`${done/total*100}%`;
@@ -2221,14 +2226,15 @@ function renderExtractResults(){
   const el=document.getElementById('extractResults');
   let html='';
   if(S.charTable?.length){
-    const sch=['Study','Design','N','Intervention','Control','Outcomes'];
+    const sch=['Study','Design','Population','Total N','Tx Arm N','Tx Treatment','Ctrl Arm N','Ctrl Treatment','Primary Outcomes','Main Conclusion','Follow-up'];
+    const minW=[130,140,180,70,70,160,70,160,160,240,90];
     html+=`<div class="card"><div class="card-head"><div class="ci ci-teal">📋</div>
       <div class="cht"><h2>Table 1 — Characteristics of Included Studies</h2></div>
       <div style="margin-left:auto"><button class="btn btn-ghost btn-sm" onclick="dlChar()">📥 下載 CSV</button></div></div>
-      <div class="tbl-wrap"><table><thead><tr>${sch.map(s=>`<th>${s}</th>`).join('')}</tr></thead><tbody>
-      ${S.charTable.map(r=>`<tr>${sch.map((_,i)=>`<td><input value="${esc(r[i]||'')}"></td>`).join('')}</tr>`).join('')}
+      <div class="tbl-wrap" style="overflow-x:auto"><table><thead><tr>${sch.map((s,si)=>`<th style="min-width:${minW[si]}px">${s}</th>`).join('')}</tr></thead><tbody>
+      ${S.charTable.map(r=>`<tr>${sch.map((_,i)=>`<td><input value="${esc(r[i]||'')}" style="min-width:${minW[i]-8}px"></td>`).join('')}</tr>`).join('')}
       </tbody></table></div></div>`;
-  }
+  }}
   Object.entries(S.extractedDS).forEach(([out,{rows,dtype,schema}])=>{
     html+=`<div class="card"><div class="card-head"><div class="ci ci-teal">📊</div>
       <div class="cht"><h2>${out}</h2><p style="font-size:12px">${dtype} · ${rows.length} studies found</p></div>
@@ -2261,7 +2267,7 @@ window.addRow=function(encOut){
 };
 window.dlChar=function(){
   if(!S.charTable)return;
-  const sch=['Study','Design','N','Intervention','Control','Outcomes'];
+  const sch=['Study','Design','Population','Total N','Tx Arm N','Tx Treatment','Ctrl Arm N','Ctrl Treatment','Primary Outcomes','Main Conclusion','Follow-up'];
   const csv=[sch.join(','),...S.charTable.map(r=>sch.map((_,i)=>csv_cell(r[i]||'')).join(','))].join('\n');
   dlCSV(csv,'characteristics_table.csv');
 };
