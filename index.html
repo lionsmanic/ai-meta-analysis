@@ -341,11 +341,39 @@ td input:focus{border-bottom-color:var(--teal)}
           <div style="background:var(--teal);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">3</div>
           <span style="font-weight:600;font-size:14px">Study Design Filters &amp; 組合雙資料庫策略</span>
         </div>
-        <div class="flex-row" style="gap:16px;margin-bottom:13px">
-          <label class="cb-lbl"><input type="checkbox" id="fRCT"> 限定 RCT</label>
-          <label class="cb-lbl"><input type="checkbox" id="fNoRev" checked> 排除 Review/Meta</label>
-          <label class="cb-lbl"><input type="checkbox" id="fHuman" checked> 限定人體研究</label>
-          <label class="cb-lbl"><input type="checkbox" id="fEng" checked> 限定英文</label>
+        <!-- Study design filters -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px">研究設計限定</div>
+          <div class="flex-row" style="gap:14px;flex-wrap:wrap">
+            <label class="cb-lbl"><input type="checkbox" id="fRCT"> 限定 RCT</label>
+            <label class="cb-lbl"><input type="checkbox" id="fHuman" checked> 限定人體研究</label>
+            <label class="cb-lbl"><input type="checkbox" id="fEng" checked> 限定英文</label>
+          </div>
+        </div>
+        <!-- Review / Meta-Analysis filter group -->
+        <div style="margin-bottom:13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 13px">
+          <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">Review / Meta-Analysis 篩選</div>
+          <div style="display:flex;gap:0;flex-wrap:wrap;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content">
+            <label id="lbl-revNone"  style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--teal);color:#fff;border-right:1px solid rgba(255,255,255,.3)">
+              <input type="radio" name="revFilter" id="fRevNone" value="none" checked style="display:none"> 不篩選
+            </label>
+            <label id="lbl-revExclRev" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
+              <input type="radio" name="revFilter" id="fRevExclRev" value="exclRev" style="display:none"> 排除 Review
+            </label>
+            <label id="lbl-revExclMeta" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
+              <input type="radio" name="revFilter" id="fRevExclMeta" value="exclMeta" style="display:none"> 排除 Meta-Analysis
+            </label>
+            <label id="lbl-revExclBoth" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
+              <input type="radio" name="revFilter" id="fRevExclBoth" value="exclBoth" style="display:none"> 排除 Review + Meta
+            </label>
+            <label id="lbl-revOnlyRev" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
+              <input type="radio" name="revFilter" id="fRevOnlyRev" value="onlyRev" style="display:none"> 只看 Review
+            </label>
+            <label id="lbl-revOnlyMeta" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2)">
+              <input type="radio" name="revFilter" id="fRevOnlyMeta" value="onlyMeta" style="display:none"> 只看 Meta-Analysis
+            </label>
+          </div>
+          <div style="font-size:11px;color:var(--text4);margin-top:6px" id="revFilterDesc">目前：不篩選（納入所有文章類型）</div>
         </div>
         <button class="btn btn-amber" id="btnMesh"><span class="spin" id="spMesh" style="display:none"></span>🔨 組合 PubMed &amp; MEDLINE 查詢策略</button>
       </div>
@@ -1324,11 +1352,32 @@ function renderValidatePanel() {
 }
 
 // ── PHASE 3: Build PubMed + MEDLINE (Ovid) strategies ──
+// ── Radio button styling ──
+(function(){
+  const descs={
+    none:'目前：不篩選（納入所有文章類型）',
+    exclRev:'目前：排除 Review（NOT "Review"[pt]）',
+    exclMeta:'目前：排除 Meta-Analysis（NOT "Meta-Analysis"[pt]）',
+    exclBoth:'目前：排除 Review 及 Meta-Analysis',
+    onlyRev:'目前：只看 Review（限定 "Review"[pt]）',
+    onlyMeta:'目前：只看 Meta-Analysis（限定 "Meta-Analysis"[pt]）',
+  };
+  document.querySelectorAll('input[name="revFilter"]').forEach(radio=>{
+    radio.addEventListener('change',()=>{
+      document.querySelectorAll('input[name="revFilter"]').forEach(r=>{
+        const lbl=document.getElementById('lbl-rev'+r.value.charAt(0).toUpperCase()+r.value.slice(1));
+        if(lbl){ lbl.style.background=r.checked?'var(--teal)':'var(--surface)'; lbl.style.color=r.checked?'#fff':'var(--text2)'; }
+      });
+      document.getElementById('revFilterDesc').textContent=descs[radio.value]||'';
+    });
+  });
+})();
+
 document.getElementById('btnMesh').addEventListener('click', () => {
   const fRCT   = document.getElementById('fRCT').checked;
-  const fNoRev = document.getElementById('fNoRev').checked;
   const fHuman = document.getElementById('fHuman').checked;
   const fEng   = document.getElementById('fEng').checked;
+  const revMode = document.querySelector('input[name="revFilter"]:checked')?.value || 'none';
 
   // ── Build PubMed strategy ──
   const groupsPubmed = {};
@@ -1344,22 +1393,32 @@ document.getElementById('btnMesh').addEventListener('click', () => {
     });
     groupsPubmed[g.picoKey] = `(\n  ${parts.join('\n  OR ')}\n)`;
   });
-  const pubmedFilters = [];
-  if(fRCT)   pubmedFilters.push('"Randomized Controlled Trial"[pt]');
-  if(fNoRev) pubmedFilters.push('NOT ("Review"[pt] OR "Systematic Review"[pt] OR "Meta-Analysis"[pt])');
-  if(fHuman) pubmedFilters.push('"Humans"[Mesh]');
-  if(fEng)   pubmedFilters.push('"English"[lang]');
 
   const picoOrder = ['P','I','C','O'];
   const pubmedParts = picoOrder.filter(k=>groupsPubmed[k]).map(k=>groupsPubmed[k]);
   let pubmedQuery = pubmedParts.join('\nAND\n');
-  if(pubmedFilters.length) pubmedQuery += '\nAND ' + pubmedFilters.join('\nAND ');
+
+  // Positive filters — use AND
+  const posParts = [];
+  if(fRCT)   posParts.push('"Randomized Controlled Trial"[pt]');
+  if(fHuman) posParts.push('"Humans"[Mesh]');
+  if(fEng)   posParts.push('"English"[lang]');
+  // Review filter
+  if(revMode==='onlyRev')  posParts.push('"Review"[pt]');
+  if(revMode==='onlyMeta') posParts.push('"Meta-Analysis"[pt]');
+  if(posParts.length) pubmedQuery += '\nAND ' + posParts.join('\nAND ');
+
+  // Negative filters — use NOT (must come AFTER positive filters)
+  const negParts = [];
+  if(revMode==='exclRev')  negParts.push('"Review"[pt]');
+  if(revMode==='exclMeta') negParts.push('"Meta-Analysis"[pt]');
+  if(revMode==='exclBoth') negParts.push('"Review"[pt]', '"Systematic Review"[pt]', '"Meta-Analysis"[pt]');
+  if(negParts.length) pubmedQuery += '\nNOT (' + negParts.join(' OR ') + ')';
 
   // ── Build MEDLINE (Ovid) strategy ──
-  // Ovid syntax: numbered lines, exp for MeSH, .mp. for free text, $ truncation, OR within group, AND between groups
   let lineNum = 1;
   const ovidLines = [];
-  const groupLineRanges = {}; // { picoKey: [startLine, endLine] }
+  const groupLineRanges = {};
 
   MESH_STATE.groups.forEach(g => {
     const sel = g.candidates.filter(c=>c.selected);
@@ -1367,49 +1426,47 @@ document.getElementById('btnMesh').addEventListener('click', () => {
     const startLine = lineNum;
     sel.forEach(c => {
       if(c.meshTerm){
-        // exp = explode (includes narrower terms)
-        ovidLines.push(`${lineNum}. exp ${c.meshTerm}/`);
-        lineNum++;
+        ovidLines.push(`${lineNum}. exp ${c.meshTerm}/`); lineNum++;
       }
-      // Always add free-text .mp. line
-      // Use $ for truncation if term doesn't end in common suffixes
-      const kw = c.keyword.replace(/s$/,''); // simple stem
-      ovidLines.push(`${lineNum}. ${c.keyword}.mp.`);
-      lineNum++;
+      ovidLines.push(`${lineNum}. ${c.keyword}.mp.`); lineNum++;
     });
     const endLine = lineNum - 1;
-    // Create OR combination line for this group
-    const range = startLine === endLine ? `${startLine}` : `${startLine}-${endLine}`;
-    const orLine = `${lineNum}. ${range === `${startLine}` ? startLine : Array.from({length:endLine-startLine+1},(_,i)=>startLine+i).join(' or ')}`;
-    ovidLines.push(`${lineNum}. ${Array.from({length:endLine-startLine+1},(_,i)=>startLine+i).join(' or ')}`);
-    groupLineRanges[g.picoKey] = lineNum;
-    lineNum++;
+    const orNums = Array.from({length:endLine-startLine+1},(_,i)=>startLine+i).join(' or ');
+    ovidLines.push(`${lineNum}. ${orNums}`);
+    groupLineRanges[g.picoKey] = lineNum; lineNum++;
   });
 
-  // AND combination of all PICO groups
   const andParts = picoOrder.filter(k=>groupLineRanges[k]).map(k=>groupLineRanges[k]);
   if(andParts.length > 1){
     ovidLines.push(`${lineNum}. ${andParts.join(' and ')}`);
     const mainLine = lineNum; lineNum++;
 
-    // Filters
-    const filterLines = [];
-    if(fRCT)   { ovidLines.push(`${lineNum}. randomized controlled trial.pt.`); filterLines.push(lineNum); lineNum++; }
-    if(fNoRev) { ovidLines.push(`${lineNum}. exp Review/ not exp Randomized Controlled Trials/`); filterLines.push(lineNum); lineNum++; }
-    if(fHuman) { ovidLines.push(`${lineNum}. exp Humans/`); filterLines.push(lineNum); lineNum++; }
-    if(fEng)   { ovidLines.push(`${lineNum}. English.la.`); filterLines.push(lineNum); lineNum++; }
+    // Positive filters
+    const filterNums = [];
+    if(fRCT)   { ovidLines.push(`${lineNum}. randomized controlled trial.pt.`); filterNums.push(lineNum); lineNum++; }
+    if(fHuman) { ovidLines.push(`${lineNum}. exp Humans/`); filterNums.push(lineNum); lineNum++; }
+    if(fEng)   { ovidLines.push(`${lineNum}. English.la.`); filterNums.push(lineNum); lineNum++; }
+    if(revMode==='onlyRev')  { ovidLines.push(`${lineNum}. review.pt.`); filterNums.push(lineNum); lineNum++; }
+    if(revMode==='onlyMeta') { ovidLines.push(`${lineNum}. meta-analysis.pt.`); filterNums.push(lineNum); lineNum++; }
 
-    if(filterLines.length){
-      const filterAnd = fNoRev
-        ? `${mainLine} and ${filterLines.filter((l,i)=>i!==filterLines.indexOf(filterLines.find((x,ii)=>ii===1&&fNoRev))).join(' and ')}`
-        : `${mainLine} and ${filterLines.join(' and ')}`;
-      ovidLines.push(`${lineNum}. ${mainLine}${filterLines.length?' and '+filterLines.join(' and '):''}`);
+    // Negative filters
+    const notNums = [];
+    if(revMode==='exclRev')  { ovidLines.push(`${lineNum}. review.pt.`); notNums.push(lineNum); lineNum++; }
+    if(revMode==='exclMeta') { ovidLines.push(`${lineNum}. meta-analysis.pt.`); notNums.push(lineNum); lineNum++; }
+    if(revMode==='exclBoth') {
+      ovidLines.push(`${lineNum}. review.pt. or systematic review.pt. or meta-analysis.pt.`);
+      notNums.push(lineNum); lineNum++;
     }
+
+    // Final combination
+    let finalLine = `${mainLine}`;
+    if(filterNums.length) finalLine += ` and ${filterNums.join(' and ')}`;
+    if(notNums.length)    finalLine += ` not ${notNums.join(' not ')}`;
+    ovidLines.push(`${lineNum}. ${finalLine}`);
   }
 
   const medlineQuery = ovidLines.join('\n');
 
-  // ── Fill textareas ──
   document.getElementById('pubmedQueryEdit').value = pubmedQuery;
   document.getElementById('medlineQueryEdit').value = medlineQuery;
   document.getElementById('meshOut').style.display = 'block';
