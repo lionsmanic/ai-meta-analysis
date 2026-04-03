@@ -375,6 +375,24 @@ td input:focus{border-bottom-color:var(--teal)}
           </div>
           <div style="font-size:11px;color:var(--text4);margin-top:6px" id="revFilterDesc">目前：不篩選（納入所有文章類型）</div>
         </div>
+        <!-- Sensitivity selector -->
+        <div style="margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 13px">
+          <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">搜尋靈敏度（Sensitivity）</div>
+          <div style="display:flex;gap:0;flex-wrap:wrap;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content">
+            <label id="lbl-sensPI" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--teal);color:#fff;border-right:1px solid rgba(255,255,255,.3)">
+              <input type="radio" name="sensMode" id="fSensPI" value="PI" checked style="display:none"> P + I（最廣）
+            </label>
+            <label id="lbl-sensPIC" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
+              <input type="radio" name="sensMode" id="fSensPIC" value="PIC" style="display:none"> P + I + C
+            </label>
+            <label id="lbl-sensFull" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2)">
+              <input type="radio" name="sensMode" id="fSensFull" value="PICO" style="display:none"> P + I + C + O（最精確）
+            </label>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:7px;line-height:1.6" id="sensDesc">
+            <b>P + I（建議）：</b>只要族群和介入符合即納入，避免漏掉 C 或 O 不完全吻合但仍相關的文章（如 Pennacchini 2024 這類以婦癌為主、子宮內膜癌為子族群的研究）。
+          </div>
+        </div>
         <button class="btn btn-amber" id="btnMesh"><span class="spin" id="spMesh" style="display:none"></span>🔨 組合 PubMed &amp; MEDLINE 查詢策略</button>
       </div>
 
@@ -406,8 +424,16 @@ td input:focus{border-bottom-color:var(--teal)}
             </div>
             <textarea id="pubmedQueryEdit" rows="7" style="border:none;border-radius:0;font-family:'DM Mono',monospace;font-size:12px;background:#fff;padding:12px 14px;resize:vertical;min-height:110px" placeholder="策略組合後顯示…"></textarea>
           </div>
+          <!-- Sensitive strategy (P+I only) shown when relevant -->
+          <div id="sensitiveQueryBox" style="display:none;margin-top:10px;border:1.5px solid var(--amber);border-radius:var(--r-sm);overflow:hidden">
+            <div style="background:var(--amber-lt);padding:6px 12px;font-size:12px;color:var(--amber);font-weight:600">
+              ⚡ 高靈敏策略（P + I，無 C/O 限制）— 文章數較多，建議作為補充搜尋
+            </div>
+            <textarea id="pubmedQuerySensitive" rows="5" style="border:none;font-family:'DM Mono',monospace;font-size:12px;background:#fff;padding:10px 14px;resize:vertical;min-height:90px;width:100%;box-sizing:border-box" placeholder="高靈敏策略…"></textarea>
+          </div>
           <div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-primary" id="btnPubmedSearch"><span class="spin" id="spPubSearch" style="display:none"></span>🔍 搜尋 PubMed → 帶入 Step 2</button>
+            <button class="btn btn-ghost btn-sm" id="btnSearchSensitive" style="display:none">⚡ 以高靈敏策略搜尋</button>
             <button class="btn btn-ghost btn-sm" id="btnCopyMesh">📋 複製策略</button>
             <a id="btnOpenPubmed" href="#" target="_blank" class="btn btn-ghost btn-sm" style="display:none">🌐 在 PubMed 開啟</a>
           </div>
@@ -1380,104 +1406,149 @@ document.getElementById('btnMesh').addEventListener('click', () => {
   const fHuman = document.getElementById('fHuman').checked;
   const fEng   = document.getElementById('fEng').checked;
   const revMode = document.querySelector('input[name="revFilter"]:checked')?.value || 'none';
+  const sensMode = document.querySelector('input[name="sensMode"]:checked')?.value || 'PI';
 
-  // ── Build PubMed strategy ──
+  // ── Sense mode radio styling ──
+  ['PI','PIC','PICO'].forEach(v=>{
+    const lbl=document.getElementById('lbl-sens'+v.replace('+',''));
+    if(!lbl) return;
+    const isActive = sensMode===v;
+    lbl.style.background = isActive ? 'var(--teal)' : 'var(--surface)';
+    lbl.style.color = isActive ? '#fff' : 'var(--text2)';
+  });
+
+  // ── Build keyword groups ──
   const groupsPubmed = {};
   MESH_STATE.groups.forEach(g => {
     const sel = g.candidates.filter(c=>c.selected);
     if(!sel.length) return;
-    const parts = sel.map(c => {
-      if(c.meshTerm){
-        return `("${c.meshTerm}"[Mesh] OR "${c.keyword}"[tiab])`;
-      } else {
-        return `"${c.keyword}"[tiab]`;
-      }
-    });
+    const parts = sel.map(c =>
+      c.meshTerm ? `("${c.meshTerm}"[Mesh] OR "${c.keyword}"[tiab])` : `"${c.keyword}"[tiab]`
+    );
     groupsPubmed[g.picoKey] = `(\n  ${parts.join('\n  OR ')}\n)`;
   });
 
-  const picoOrder = ['P','I','C','O'];
-  const pubmedParts = picoOrder.filter(k=>groupsPubmed[k]).map(k=>groupsPubmed[k]);
-  let pubmedQuery = pubmedParts.join('\nAND\n');
+  // ── Helper: build PubMed query for a given PICO subset ──
+  function buildPubmedQuery(picoKeys) {
+    const parts = picoKeys.filter(k=>groupsPubmed[k]).map(k=>groupsPubmed[k]);
+    let q = parts.join('\nAND\n');
+    const pos=[];
+    if(fRCT)   pos.push('"Randomized Controlled Trial"[pt]');
+    if(fHuman) pos.push('"Humans"[Mesh]');
+    if(fEng)   pos.push('"English"[lang]');
+    if(revMode==='onlyRev')  pos.push('"Review"[pt]');
+    if(revMode==='onlyMeta') pos.push('"Meta-Analysis"[pt]');
+    if(pos.length) q += '\nAND ' + pos.join('\nAND ');
+    const neg=[];
+    if(revMode==='exclRev')  neg.push('"Review"[pt]');
+    if(revMode==='exclMeta') neg.push('"Meta-Analysis"[pt]');
+    if(revMode==='exclBoth') neg.push('"Review"[pt]','"Systematic Review"[pt]','"Meta-Analysis"[pt]');
+    if(neg.length) q += '\nNOT (' + neg.join(' OR ') + ')';
+    return q;
+  }
 
-  // Positive filters — use AND
-  const posParts = [];
-  if(fRCT)   posParts.push('"Randomized Controlled Trial"[pt]');
-  if(fHuman) posParts.push('"Humans"[Mesh]');
-  if(fEng)   posParts.push('"English"[lang]');
-  // Review filter
-  if(revMode==='onlyRev')  posParts.push('"Review"[pt]');
-  if(revMode==='onlyMeta') posParts.push('"Meta-Analysis"[pt]');
-  if(posParts.length) pubmedQuery += '\nAND ' + posParts.join('\nAND ');
+  // Main query based on selected sensitivity
+  const picoOrderMap = { 'PI':['P','I'], 'PIC':['P','I','C'], 'PICO':['P','I','C','O'] };
+  const mainKeys = picoOrderMap[sensMode] || ['P','I'];
+  const pubmedQuery = buildPubmedQuery(mainKeys);
 
-  // Negative filters — use NOT (must come AFTER positive filters)
-  const negParts = [];
-  if(revMode==='exclRev')  negParts.push('"Review"[pt]');
-  if(revMode==='exclMeta') negParts.push('"Meta-Analysis"[pt]');
-  if(revMode==='exclBoth') negParts.push('"Review"[pt]', '"Systematic Review"[pt]', '"Meta-Analysis"[pt]');
-  if(negParts.length) pubmedQuery += '\nNOT (' + negParts.join(' OR ') + ')';
+  // Always also generate P+I sensitive query (shown if mode is not PI)
+  const sensitiveQuery = sensMode !== 'PI' ? buildPubmedQuery(['P','I']) : '';
 
-  // ── Build MEDLINE (Ovid) strategy ──
+  // ── Build MEDLINE (Ovid) strategy for main query ──
   let lineNum = 1;
   const ovidLines = [];
   const groupLineRanges = {};
-
+  const picoAll = ['P','I','C','O'];
   MESH_STATE.groups.forEach(g => {
     const sel = g.candidates.filter(c=>c.selected);
     if(!sel.length) return;
     const startLine = lineNum;
     sel.forEach(c => {
-      if(c.meshTerm){
-        ovidLines.push(`${lineNum}. exp ${c.meshTerm}/`); lineNum++;
-      }
+      if(c.meshTerm){ ovidLines.push(`${lineNum}. exp ${c.meshTerm}/`); lineNum++; }
       ovidLines.push(`${lineNum}. ${c.keyword}.mp.`); lineNum++;
     });
-    const endLine = lineNum - 1;
-    const orNums = Array.from({length:endLine-startLine+1},(_,i)=>startLine+i).join(' or ');
-    ovidLines.push(`${lineNum}. ${orNums}`);
+    const endLine = lineNum-1;
+    ovidLines.push(`${lineNum}. ${Array.from({length:endLine-startLine+1},(_,i)=>startLine+i).join(' or ')}`);
     groupLineRanges[g.picoKey] = lineNum; lineNum++;
   });
 
-  const andParts = picoOrder.filter(k=>groupLineRanges[k]).map(k=>groupLineRanges[k]);
+  const andParts = mainKeys.filter(k=>groupLineRanges[k]).map(k=>groupLineRanges[k]);
   if(andParts.length > 1){
     ovidLines.push(`${lineNum}. ${andParts.join(' and ')}`);
     const mainLine = lineNum; lineNum++;
-
-    // Positive filters
-    const filterNums = [];
+    const filterNums=[], notNums=[];
     if(fRCT)   { ovidLines.push(`${lineNum}. randomized controlled trial.pt.`); filterNums.push(lineNum); lineNum++; }
     if(fHuman) { ovidLines.push(`${lineNum}. exp Humans/`); filterNums.push(lineNum); lineNum++; }
     if(fEng)   { ovidLines.push(`${lineNum}. English.la.`); filterNums.push(lineNum); lineNum++; }
     if(revMode==='onlyRev')  { ovidLines.push(`${lineNum}. review.pt.`); filterNums.push(lineNum); lineNum++; }
     if(revMode==='onlyMeta') { ovidLines.push(`${lineNum}. meta-analysis.pt.`); filterNums.push(lineNum); lineNum++; }
-
-    // Negative filters
-    const notNums = [];
     if(revMode==='exclRev')  { ovidLines.push(`${lineNum}. review.pt.`); notNums.push(lineNum); lineNum++; }
     if(revMode==='exclMeta') { ovidLines.push(`${lineNum}. meta-analysis.pt.`); notNums.push(lineNum); lineNum++; }
-    if(revMode==='exclBoth') {
-      ovidLines.push(`${lineNum}. review.pt. or systematic review.pt. or meta-analysis.pt.`);
-      notNums.push(lineNum); lineNum++;
-    }
-
-    // Final combination
+    if(revMode==='exclBoth') { ovidLines.push(`${lineNum}. review.pt. or systematic review.pt. or meta-analysis.pt.`); notNums.push(lineNum); lineNum++; }
     let finalLine = `${mainLine}`;
     if(filterNums.length) finalLine += ` and ${filterNums.join(' and ')}`;
-    if(notNums.length)    finalLine += ` not ${notNums.join(' not ')}`;
+    if(notNums.length) finalLine += ` not ${notNums.join(' not ')}`;
     ovidLines.push(`${lineNum}. ${finalLine}`);
   }
 
-  const medlineQuery = ovidLines.join('\n');
-
   document.getElementById('pubmedQueryEdit').value = pubmedQuery;
-  document.getElementById('medlineQueryEdit').value = medlineQuery;
+  document.getElementById('medlineQueryEdit').value = ovidLines.join('\n');
   document.getElementById('meshOut').style.display = 'block';
   updateOpenPubmedLink(pubmedQuery);
   document.getElementById('pubmedResultCount').textContent = '';
   document.getElementById('medlineResultCount').textContent = '';
+
+  // Show/hide sensitive query box
+  const sensBox = document.getElementById('sensitiveQueryBox');
+  const btnSens = document.getElementById('btnSearchSensitive');
+  if(sensitiveQuery){
+    document.getElementById('pubmedQuerySensitive').value = sensitiveQuery;
+    sensBox.style.display = 'block';
+    btnSens.style.display = 'inline-flex';
+  } else {
+    sensBox.style.display = 'none';
+    btnSens.style.display = 'none';
+  }
+
   notify('PubMed 及 MEDLINE 策略已組合完成 ✓','success');
   document.getElementById('meshOut').scrollIntoView({behavior:'smooth',block:'nearest'});
 });
+
+// Sensitivity radio styling on load
+document.querySelectorAll('input[name="sensMode"]').forEach(r=>{
+  r.addEventListener('change',()=>{
+    const descs={
+      PI:'<b>P + I（建議）：</b>只要族群和介入符合即納入，避免漏掉 C 或 O 不吻合但仍相關的研究（靈敏度最高）。',
+      PIC:'<b>P + I + C：</b>族群、介入、對照組均需符合，適度提升特異性。',
+      PICO:'<b>P + I + C + O（最精確）：</b>四個條件均需符合，文章數最少但精準度最高。',
+    };
+    document.getElementById('sensDesc').innerHTML = descs[r.value]||'';
+    ['PI','PIC','PICO'].forEach(v=>{
+      const lbl=document.getElementById('lbl-sens'+v);
+      if(!lbl) return;
+      lbl.style.background = r.value===v ? 'var(--teal)' : 'var(--surface)';
+      lbl.style.color = r.value===v ? '#fff' : 'var(--text2)';
+    });
+  });
+});
+
+// Sensitive search button
+document.getElementById('btnSearchSensitive').addEventListener('click', async()=>{
+  const query = document.getElementById('pubmedQuerySensitive').value.trim();
+  if(!query) return notify('請先組合策略','warn');
+  const btn = document.getElementById('btnSearchSensitive');
+  btn.disabled = true; btn.textContent = '⏳ 搜尋中…';
+  try {
+    const {total} = await doEsearch(query, 1, 'pubmed');
+    if(!total){ notify('高靈敏策略搜尋無結果','warn'); btn.disabled=false; btn.textContent='⚡ 以高靈敏策略搜尋'; return; }
+    const fetchMax = Math.min(total, 10000);
+    notify(`高靈敏策略命中 ${total} 篇，取得中…`, 'info', 3000);
+    const {pmids} = await doEsearch(query, fetchMax, 'pubmed');
+    populateStep2(pmids, 'PubMed', total);
+  } catch(e) { notify('搜尋失敗：'+e.message,'error'); }
+  btn.disabled=false; btn.textContent='⚡ 以高靈敏策略搜尋';
+});;
 
 function updateOpenPubmedLink(query) {
   const link = document.getElementById('btnOpenPubmed');
