@@ -2871,15 +2871,16 @@ function erf(x){
   return s*(1-t*(0.254829592+t*(-0.284496736+t*(1.421413741+t*(-1.453152027+t*1.061405429))))*Math.exp(-x*x));
 }
 
-// ── INFLUENCE DIAGNOSTICS (8 panels, clean layout) ───────────
+// ── INFLUENCE DIAGNOSTICS — single column, 8 rows ───────────
 function renderInfl(ma){
   const infl=ma.infl, res=ma.res;
   const el=document.getElementById('inflPlot');
   if(!infl.length){el.innerHTML='<p style="padding:16px;color:#666;font-size:14px">研究數不足（需 ≥ 3）</p>';return;}
   const k=infl.length, x=infl.map((_,i)=>i+1);
 
+  // 8 metrics, single-column vertical layout (like reference image)
   const metrics=[
-    {key:'rstudent', label:'rstudent', refs:[-2,2], sym:true},
+    {key:'rstudent', label:'rstudent', refs:[-2,2],    sym:true},
     {key:'dffits',   label:'dffits',   refs:[2*Math.sqrt(2/k)], sym:true},
     {key:'cookD',    label:'cook.d',   refs:[4/k]},
     {key:'covR',     label:'cov.r',    refs:[1]},
@@ -2889,66 +2890,108 @@ function renderInfl(ma){
     {key:'weight',   label:'weight',   refs:[100/k]},
   ];
 
-  const nr=4, nc=2;
+  const nr=8, panelH=0.115;  // each panel takes this fraction of total height
+  const gap=0.012;
   const traces=[], layoutAnnots=[];
-  const layout={...BASE, showlegend:false,
-    margin:{l:65,r:15,t:25,b:20},
-    height:nr*185+60,
+  const layout={
+    ...BASE,
+    showlegend:false,
+    margin:{l:55, r:15, t:20, b:30},
+    height: nr * 155 + 40,
   };
 
   metrics.forEach((m,i)=>{
-    const row=Math.floor(i/nc), col=i%nc;
-    const xd=[col/nc+0.07, (col+1)/nc-0.02];
-    const yd=[(nr-row-1)/nr+0.045, (nr-row)/nr-0.03];
-    const ax=i===0?'':String(i+1);
-    const vals=infl.map(r=>r[m.key]||0);
-    const maxI=vals.reduce((mi,v,ii)=>Math.abs(v)>Math.abs(vals[mi])?ii:mi,0);
+    const rowFromTop = i;
+    // y domain: stack top-to-bottom
+    const yTop = 1 - rowFromTop*(panelH+gap);
+    const yBot = yTop - panelH;
+    const xd = [0, 1];
+    const yd = [Math.max(0,yBot), Math.min(1,yTop)];
+    const ax = i===0 ? '' : String(i+1);
 
-    // Line + open circle markers; red for max
+    const vals = infl.map(r => r[m.key] || 0);
+    const maxI = vals.reduce((mi,v,ii)=>Math.abs(v)>Math.abs(vals[mi])?ii:mi, 0);
+
     traces.push({
-      type:'scatter', x, y:vals, xaxis:`x${ax}`, yaxis:`y${ax}`,
+      type:'scatter', x, y:vals,
+      xaxis:`x${ax}`, yaxis:`y${ax}`,
       mode:'lines+markers',
-      line:{color:'#000000',width:1.3},
-      marker:{color:vals.map((_,ii)=>ii===maxI?'rgba(200,0,0,0.0)':'rgba(0,0,0,0.0)'),
-              size:7, symbol:'circle-open',
-              line:{color:vals.map((_,ii)=>ii===maxI?'#cc0000':'#888888'),width:1.8}},
-      text:infl.map(r=>r.study),
-      hovertemplate:`<b>%{text}</b><br>${m.label}: %{y:.4f}<extra></extra>`,name:m.label,
+      line:{color:'#000000', width:1.3},
+      marker:{
+        size:7,
+        symbol:'circle-open',
+        color:vals.map((_,ii)=>ii===maxI?'rgba(0,0,0,0)':'rgba(0,0,0,0)'),
+        line:{
+          color:vals.map((_,ii)=>ii===maxI?'#cc0000':'#888888'),
+          width: 1.8
+        }
+      },
+      text: infl.map(r=>r.study),
+      hovertemplate:`<b>%{text}</b><br>${m.label}: %{y:.4f}<extra></extra>`,
+      name: m.label,
     });
-
-    layout[`xaxis${ax}`]={domain:xd,showgrid:false,showline:false,ticks:'outside',
-      tickfont:{color:'#000',size:9},tickvals:x,ticktext:x.map(String)};
-    layout[`yaxis${ax}`]={domain:yd,showgrid:true,gridcolor:'#e0e0e0',
-      zeroline:true,zerolinecolor:'#bbb',zerolinewidth:1,
-      tickfont:{color:'#000',size:9},
-      automargin:true,
-      title:{text:m.label,font:{color:'#000',size:10.5},standoff:6}};
 
     // Reference lines
+    const refTraceBase = {type:'scatter', xaxis:`x${ax}`, yaxis:`y${ax}`,
+      mode:'lines', hoverinfo:'skip', showlegend:false};
     m.refs.forEach(ref=>{
-      traces.push({type:'scatter',x:[1,k],y:[ref,ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
-        mode:'lines',line:{color:'#000',dash:'dot',width:1},hoverinfo:'skip',showlegend:false});
-      if(m.sym) traces.push({type:'scatter',x:[1,k],y:[-ref,-ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
-        mode:'lines',line:{color:'#000',dash:'dot',width:1},hoverinfo:'skip',showlegend:false});
+      traces.push({...refTraceBase, x:[1,k], y:[ref,ref], line:{color:'#000',dash:'dot',width:1}});
+      if(m.sym) traces.push({...refTraceBase, x:[1,k], y:[-ref,-ref], line:{color:'#000',dash:'dot',width:1}});
     });
     if(m.refs2) m.refs2.forEach(ref=>{
-      traces.push({type:'scatter',x:[1,k],y:[ref,ref],xaxis:`x${ax}`,yaxis:`y${ax}`,
-        mode:'lines',line:{color:'#999',dash:'dash',width:1},hoverinfo:'skip',showlegend:false});
+      traces.push({...refTraceBase, x:[1,k], y:[ref,ref], line:{color:'#aaa',dash:'dash',width:1}});
     });
 
+    // x-axis: show tick labels only on the last panel
+    layout[`xaxis${ax}`] = {
+      domain: xd,
+      showgrid: false,
+      showline: false,
+      ticks: i===nr-1 ? 'outside' : '',
+      showticklabels: i===nr-1,
+      tickvals: x,
+      ticktext: x.map(String),
+      tickfont: {color:'#000', size:10},
+    };
+
+    // y-axis: no rotated title, just clean ticks
+    layout[`yaxis${ax}`] = {
+      domain: yd,
+      showgrid: true,
+      gridcolor: '#e8e8e8',
+      gridwidth: 1,
+      zeroline: true,
+      zerolinecolor: '#bbb',
+      zerolinewidth: 1,
+      showline: false,
+      tickfont: {color:'#000', size:9.5},
+      automargin: false,
+      nticks: 4,
+    };
+
+    // Panel title as annotation — centered above each panel
     layoutAnnots.push({
-      x:(xd[0]+xd[1])/2, y:yd[1]+0.004, xref:'paper', yref:'paper',
-      text:`<b>${m.label}</b>`, showarrow:false,
-      font:{color:'#000',size:11}, xanchor:'center', yanchor:'bottom',
+      x: 0.5,
+      y: yTop + gap*0.4,
+      xref: 'paper',
+      yref: 'paper',
+      text: `<b>${m.label}</b>`,
+      showarrow: false,
+      font: {color:'#000', size:11.5},
+      xanchor: 'center',
+      yanchor: 'bottom',
     });
   });
-  layout.annotations=layoutAnnots;
 
-  Plotly.react('inflPlot',traces,layout,{responsive:true,displayModeBar:true,
+  layout.annotations = layoutAnnots;
+
+  Plotly.react('inflPlot', traces, layout, {
+    responsive: true,
+    displayModeBar: true,
     modeBarButtonsToRemove:['zoom2d','pan2d','select2d','lasso2d'],
-    toImageButtonOptions:{filename:'influence_diagnostics',scale:2}});
+    toImageButtonOptions:{filename:'influence_diagnostics', scale:2},
+  });
 }
-
 
 document.getElementById('btnStats').addEventListener('click',()=>{
   const out=document.getElementById('statsOutcomeSel').value;
