@@ -508,6 +508,7 @@ td input:focus{border-bottom-color:var(--teal)}
         <button class="btn btn-outline btn-sm" id="btnNextBatch" style="display:none"><span class="spin" id="spNextBatch" style="display:none"></span>▶ 繼續下一批</button>
         <div id="screenCounts" style="display:flex;gap:7px;visibility:hidden">
           <span class="badge b-green" id="cntIncl">✓ 0 納入</span>
+          <span class="badge b-amber" id="cntPoss" style="display:none">? 0 待全文審</span>
           <span class="badge b-gray" id="cntExcl">✗ 0 排除</span>
           <span class="badge b-teal" id="cntTotal" style="display:none"></span>
         </div>
@@ -525,6 +526,7 @@ td input:focus{border-bottom-color:var(--teal)}
       <span style="font-size:13px;color:var(--text3);font-weight:600">顯示：</span>
       <button class="btn btn-sm btn-primary" id="filterAll">全部</button>
       <button class="btn btn-sm btn-outline" id="filterIncl">✓ 僅顯示建議納入</button>
+      <button class="btn btn-sm btn-outline" id="filterPoss" style="background:var(--amber-lt);border-color:var(--amber);color:var(--amber)">? 待全文審</button>
       <button class="btn btn-sm btn-ghost" id="filterExcl">✗ 僅顯示排除</button>
     </div>
     <div id="screenList"></div>
@@ -1797,18 +1799,28 @@ async function runScreenBatch(pico, bar, stat) {
   bar.style.width = '10%';
 
   const prompts = batch.map(a =>
-    `You are a systematic review screener. Read the study below and decide INCLUDE or EXCLUDE based on the PICO criteria.
+    `You are an expert systematic review screener. Read the study below and assign one of THREE verdicts based on the PICO criteria.
 
-[PICO]
-P=${pico.p||'N/A'} | I=${pico.i||'N/A'} | C=${pico.c||'N/A'} | O=${pico.o1||'N/A'}${pico.o2?'; '+pico.o2:''}
+[PICO INCLUSION CRITERIA]
+P=${pico.p||'N/A'}
+I=${pico.i||'N/A'}
+C=${pico.c||'N/A'}
+O=${pico.o1||'N/A'}${pico.o2?'; '+pico.o2:''}
 
 [STUDY]
 Title: ${a.title}
 Abstract: ${(a.abstract||'no abstract').substring(0,800)}
 
+[VERDICT RULES - choose exactly one]
+INCLUDED = Study clearly meets all PICO criteria (population matches P, intervention matches I, outcomes include O).
+POSSIBLY_RELEVANT = Study partially meets criteria — e.g. the target population (P) is a SUBGROUP of the study, or outcomes partially overlap, or some key details are missing from the abstract. These MUST be retrieved for full-text review.
+EXCLUDED = Study clearly does not meet PICO criteria.
+
+CRITICAL: When P is a specific subgroup (e.g. endometrial cancer patients), use POSSIBLY_RELEVANT if the study includes that subgroup even alongside other groups. Only use EXCLUDED when the P population is definitively absent.
+
 [YOUR RESPONSE - write exactly 2 lines, nothing else]
-Line 1 must be exactly: INCLUDED or EXCLUDED
-Line 2 must start with REASON: then write 80-120 繁體中文 characters explaining: 研究設計、研究族群、介入措施、結果指標各一句，最後一句給出結論。專有名詞可用英文。`);
+Line 1: INCLUDED or POSSIBLY_RELEVANT or EXCLUDED
+Line 2: REASON: 繁體中文 80-120字，說明①研究設計②族群是否符合（精確說明是否包含P族群）③介入是否符合④結果指標⑤最終判斷。`);
 
 
   // Run with abort awareness: sub-batches of 5, check abort between each
@@ -1833,62 +1845,42 @@ Line 2 must start with REASON: then write 80-120 繁體中文 characters explain
     batchInfo.textContent = `已完成 ${alreadyDone + idx} / ${grandTotal} 篇`;
   }
 
-  // Ultra-simple parser: line 1 = verdict, line 2 starts with REASON:
+  // Parser: supports INCLUDED / POSSIBLY_RELEVANT / EXCLUDED
   function parseLabeledScreenResult(raw) {
     const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-    // Find verdict: first line that is INCLUDED or EXCLUDED (or contains it)
     let status = 'EXCLUDED';
     let reasonLine = '';
     let reasonFound = false;
 
     for (const line of lines) {
       const up = line.toUpperCase();
-
-      // Verdict detection
-      if (!reasonFound && (up === 'INCLUDED' || up === 'EXCLUDED')) {
-        status = up;
-        continue;
+      // Verdict detection — check POSSIBLY_RELEVANT first (substring match)
+      if (!reasonFound) {
+        if (up.startsWith('POSSIBLY_RELEVANT') || up === 'POSSIBLY RELEVANT' || up.includes('POSSIBLY_RELEVANT')) {
+          status = 'POSSIBLY_RELEVANT'; continue;
+        }
+        if ((up === 'INCLUDED' || (up.startsWith('INCLUDED') && !up.startsWith('INCLUDED:'))) && !up.includes('EXCLUDED')) {
+          status = 'INCLUDED'; continue;
+        }
+        if (up === 'EXCLUDED' || (up.startsWith('EXCLUDED') && !up.startsWith('EXCLUDED:'))) {
+          status = 'EXCLUDED'; continue;
+        }
       }
-      if (!reasonFound && up.startsWith('INCLUDED') && !up.startsWith('INCLUDED:')) {
-        status = 'INCLUDED'; continue;
-      }
-      if (!reasonFound && up.startsWith('EXCLUDED') && !up.startsWith('EXCLUDED:')) {
-        status = 'EXCLUDED'; continue;
-      }
-
-      // Reason line: starts with REASON: or is the second meaningful line
       if (up.startsWith('REASON:')) {
         reasonLine = line.substring(line.indexOf(':') + 1).trim();
         reasonFound = true;
-        continue;
       }
     }
-
-    // Fallback: if no REASON: label found, use the longest non-verdict line
+    // Fallback reason
     if (!reasonLine) {
       const candidates = lines.filter(l => {
         const u = l.toUpperCase();
-        return !u.match(/^(INCLUDED|EXCLUDED|DESIGN|POPULATION|INTERVENTION|CONTROL|OUTCOMES|STATUS|VERDICT)/) && l.length > 10;
+        return !u.match(/^(INCLUDED|EXCLUDED|POSSIBLY|DESIGN|POPULATION|INTERVENTION|CONTROL|OUTCOMES|STATUS|VERDICT)/) && l.length > 10;
       });
       reasonLine = candidates.sort((a,b) => b.length - a.length)[0] || '';
     }
-
-    // Also extract optional metadata lines if present
-    const getField = (label) => {
-      const line = lines.find(l => l.toUpperCase().startsWith(label + ':'));
-      return line ? line.substring(label.length + 1).trim() : '';
-    };
-
-    return {
-      status,
-      reason:       reasonLine || '（AI 未提供完整理由）',
-      design:       getField('DESIGN'),
-      population:   getField('POPULATION'),
-      intervention: getField('INTERVENTION'),
-      control:      getField('CONTROL'),
-      outcomes:     getField('OUTCOMES'),
-    };
+    return { status, reason: reasonLine || '（AI 未提供完整理由）',
+      design:'', population:'', intervention:'', control:'', outcomes:'' };
   }
 
 
@@ -1910,9 +1902,12 @@ Line 2 must start with REASON: then write 80-120 繁體中文 characters explain
   bar.style.width = '100%';
 
   // Update counts
-  const inc = S.screeningResults.filter(r => r.status === 'INCLUDED').length;
-  const exc = S.screeningResults.filter(r => r.status !== 'INCLUDED').length;
+  const inc  = S.screeningResults.filter(r => r.status === 'INCLUDED').length;
+  const poss = S.screeningResults.filter(r => r.status === 'POSSIBLY_RELEVANT').length;
+  const exc  = S.screeningResults.filter(r => r.status === 'EXCLUDED').length;
   document.getElementById('cntIncl').textContent = `✓ ${inc} 納入`;
+  document.getElementById('cntPoss').textContent = `? ${poss} 待全文審`;
+  document.getElementById('cntPoss').style.display = poss > 0 ? 'inline-flex' : 'none';
   document.getElementById('cntExcl').textContent = `✗ ${exc} 排除`;
   const cntTotal = document.getElementById('cntTotal');
   cntTotal.style.display = 'inline-flex';
@@ -1937,7 +1932,7 @@ Line 2 must start with REASON: then write 80-120 繁體中文 characters explain
   } else {
     document.getElementById('btnNextBatch').style.display = 'none';
     document.getElementById('screenProg').style.display = 'none';
-    notify(`全部篩選完畢 ✓  ${inc} 篇納入 / ${exc} 篇排除`, 'success', 4000);
+    notify(`全部篩選完畢 ✓  ${inc} 篇納入 / ${poss} 篇待全文 / ${exc} 篇排除`, 'success', 5000);
   }
 }
 
@@ -1947,20 +1942,25 @@ document.getElementById('filterAll').addEventListener('click',()=>{
   setActiveFilter('all');renderScreenResults(S.screeningResults,'all');});
 document.getElementById('filterIncl').addEventListener('click',()=>{
   setActiveFilter('incl');renderScreenResults(S.screeningResults,'incl');});
+document.getElementById('filterPoss').addEventListener('click',()=>{
+  setActiveFilter('poss');renderScreenResults(S.screeningResults,'poss');});
 document.getElementById('filterExcl').addEventListener('click',()=>{
   setActiveFilter('excl');renderScreenResults(S.screeningResults,'excl');});
 function setActiveFilter(f){
-  ['filterAll','filterIncl','filterExcl'].forEach(id=>document.getElementById(id).classList.remove('btn-primary'));
-  ['filterAll','filterIncl','filterExcl'].forEach(id=>document.getElementById(id).className=document.getElementById(id).className.replace('btn-primary','btn-ghost'));
-  const map={'all':'filterAll','incl':'filterIncl','excl':'filterExcl'};
+  ['filterAll','filterIncl','filterPoss','filterExcl'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.className=el.className.replace('btn-primary','btn-ghost');
+  });
+  const map={'all':'filterAll','incl':'filterIncl','poss':'filterPoss','excl':'filterExcl'};
   const el=document.getElementById(map[f]);
-  el.className=el.className.replace('btn-ghost','btn-primary');
+  if(el) el.className=el.className.replace('btn-ghost','btn-primary');
 }
 
 function renderScreenResults(results,filter){
   let list=results;
   if(filter==='incl') list=results.filter(r=>r.status==='INCLUDED');
-  if(filter==='excl') list=results.filter(r=>r.status!=='INCLUDED');
+  if(filter==='poss') list=results.filter(r=>r.status==='POSSIBLY_RELEVANT');
+  if(filter==='excl') list=results.filter(r=>r.status==='EXCLUDED');
   const el=document.getElementById('screenList');
   if(!list.length){el.innerHTML='<div class="card" style="text-align:center;color:var(--text3);padding:30px">無符合條件的結果</div>';return;}
 
@@ -1980,16 +1980,17 @@ function renderScreenResults(results,filter){
   }
 
   el.innerHTML=list.map(r=>{
-    const inc=r.status==='INCLUDED';
-    const borderColor=inc?'#059669':'#9ca3af';
-    const headerBg=inc?'#f0fdf4':'#f9fafb';
-    const statusBg=inc?'#d1fae5':'#f3f4f6';
-    const statusColor=inc?'#047857':'#4b5563';
-    const statusText=inc?'✓ 建議納入':'✗ 建議排除';
-    const reasonBg=inc?'#f0fdf4':'#f9fafb';
-    const reasonBorder=inc?'#a7f3d0':'#e5e7eb';
-    const reasonLabel=inc?'📋 納入理由':'📋 排除理由';
-    const reasonLabelColor=inc?'#047857':'#4b5563';
+    const inc  = r.status==='INCLUDED';
+    const poss = r.status==='POSSIBLY_RELEVANT';
+    const borderColor    = inc ? '#059669' : poss ? '#d97706' : '#9ca3af';
+    const headerBg       = inc ? '#f0fdf4' : poss ? '#fffbeb' : '#f9fafb';
+    const statusBg       = inc ? '#d1fae5' : poss ? '#fef3c7' : '#f3f4f6';
+    const statusColor    = inc ? '#047857' : poss ? '#b45309' : '#4b5563';
+    const statusText     = inc ? '✓ 建議納入' : poss ? '? 待全文審查' : '✗ 建議排除';
+    const reasonBg       = inc ? '#f0fdf4' : poss ? '#fffbeb' : '#f9fafb';
+    const reasonBorder   = inc ? '#a7f3d0' : poss ? '#fde68a' : '#e5e7eb';
+    const reasonLabel    = inc ? '📋 納入理由' : poss ? '📋 待審理由（建議取得全文確認）' : '📋 排除理由';
+    const reasonLabelColor = inc ? '#047857' : poss ? '#b45309' : '#4b5563';
 
     const detailRows=[
       r.design       &&['🔬 研究設計',r.design,      '#e0f5f9','#0369a1'],
