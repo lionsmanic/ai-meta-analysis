@@ -1009,7 +1009,28 @@ function renderStatsFileCards(){
 }
 
 // ── PICO HELPERS ──
-function getPico(){return{p:$v('picoP'),i:$v('picoI'),c:$v('picoC'),o1:$v('picoO1'),o2:$v('picoO2')};}
+function getPico(){
+  if(CURRENT_FRAMEWORK === 'CoCoPop'){
+    // Map CoCoPop → PICO-compatible object so all downstream steps work
+    const cond    = $v('cocoCondition');   // Condition → plays role of P
+    const context = $v('cocoContext');     // Context   → plays role of I (search term group)
+    const pop     = $v('cocoPop');         // Population→ plays role of C (search term group)
+    const outcome = $v('cocoOutcome');     // Outcome   → plays role of O
+    // Combine Condition + Context as "P" for screening (the disease+setting = what we look for)
+    const combined = [cond, context].filter(s=>s).join('; ');
+    return {
+      p:  combined || cond,   // Condition + Context
+      i:  pop,                // Population
+      c:  '',                 // No comparison in CoCoPop
+      o1: outcome || 'Prevalence / Incidence rate',
+      o2: '',
+      // Raw CoCoPop fields also available
+      _cond: cond, _ctx: context, _pop: pop, _outcome: outcome,
+      _isCocoPop: true,
+    };
+  }
+  return{p:$v('picoP'),i:$v('picoI'),c:$v('picoC'),o1:$v('picoO1'),o2:$v('picoO2')};
+}
 function $v(id){return document.getElementById(id).value.trim();}
 function setPico(p,i,c,o1,o2){
   ['picoP','picoI','picoC','picoO1','picoO2'].forEach((id,idx)=>{
@@ -1308,7 +1329,8 @@ All keywords in English. Each 1-4 words. No explanations.`;
   }
 
   const pico = getPico();
-  if (!pico.p) return notify('請先填寫 PICO', 'warn');
+  const fwLabel = CURRENT_FRAMEWORK === 'CoCoPop' ? 'CoCoPop' : 'PICO';
+  if (!pico.p) return notify(`請先填寫 ${fwLabel} 欄位`, 'warn');
   const btn = document.getElementById('btnSuggestMesh'), sp = document.getElementById('spSuggest');
   btn.disabled = true; sp.style.display = 'inline-block';
 
@@ -2205,25 +2227,42 @@ async function runScreenBatch(pico, bar, stat) {
   stat.textContent = `並行 AI 篩選中（本批 ${batch.length} 篇）…`;
   bar.style.width = '10%';
 
-  const prompts = batch.map(a =>
-    `You are an expert systematic review screener. Read the study below and assign one of THREE verdicts based on the PICO criteria.
-
-[PICO INCLUSION CRITERIA]
+  // Build framework-appropriate inclusion criteria block
+  const buildInclusionBlock = (pico) => {
+    if(pico._isCocoPop) {
+      return `[CoCoPop INCLUSION CRITERIA]
+Condition (疾病/狀態): ${pico._cond||'N/A'}
+Context (情境/設定): ${pico._ctx||'N/A'}
+Population (研究族群): ${pico._pop||'N/A'}
+Outcome measure: ${pico._outcome||'Prevalence / Incidence rate'}`;
+    }
+    return `[PICO INCLUSION CRITERIA]
 P=${pico.p||'N/A'}
 I=${pico.i||'N/A'}
 C=${pico.c||'N/A'}
-O=${pico.o1||'N/A'}${pico.o2?'; '+pico.o2:''}
+O=${pico.o1||'N/A'}${pico.o2?'; '+pico.o2:''}`;
+  };
+  const buildVerdictRules = (pico) => pico._isCocoPop
+    ? `INCLUDED = Study reports prevalence/incidence/frequency data of the target Condition in the specified Population/Context.
+POSSIBLY_RELEVANT = Study involves the Condition or Population but outcome measure is unclear or population partially matches.
+EXCLUDED = Study does not report prevalence/incidence of the target Condition, or population is clearly different.`
+    : `INCLUDED = Study clearly meets all PICO criteria (population matches P, intervention matches I, outcomes include O).
+POSSIBLY_RELEVANT = Study partially meets criteria — e.g. the target population (P) is a SUBGROUP of the study, or outcomes partially overlap, or some key details are missing from the abstract. These MUST be retrieved for full-text review.
+EXCLUDED = Study clearly does not meet PICO criteria.`;
+
+  const prompts = batch.map(a =>
+    `You are an expert systematic review screener. Read the study below and assign one of THREE verdicts based on the inclusion criteria.
+
+${buildInclusionBlock(pico)}
 
 [STUDY]
 Title: ${a.title}
 Abstract: ${(a.abstract||'no abstract').substring(0,800)}
 
 [VERDICT RULES - choose exactly one]
-INCLUDED = Study clearly meets all PICO criteria (population matches P, intervention matches I, outcomes include O).
-POSSIBLY_RELEVANT = Study partially meets criteria — e.g. the target population (P) is a SUBGROUP of the study, or outcomes partially overlap, or some key details are missing from the abstract. These MUST be retrieved for full-text review.
-EXCLUDED = Study clearly does not meet PICO criteria.
+${buildVerdictRules(pico)}
 
-CRITICAL: When P is a specific subgroup (e.g. endometrial cancer patients), use POSSIBLY_RELEVANT if the study includes that subgroup even alongside other groups. Only use EXCLUDED when the P population is definitively absent.
+CRITICAL: Use POSSIBLY_RELEVANT when the target population is a SUBGROUP of the study. Only use EXCLUDED when the population or condition is definitively absent.
 
 [YOUR RESPONSE - write exactly 2 lines, nothing else]
 Line 1: INCLUDED or POSSIBLY_RELEVANT or EXCLUDED
@@ -2436,9 +2475,13 @@ function renderScreenResults(results,filter){
 // ── TAB 3: ROB (FIX 3: auto-fill from Step 1) ──
 document.getElementById('btnSyncRob').addEventListener('click',()=>{
   const pico=getPico();
-  document.getElementById('robPrimary').value=pico.o1;
-  document.getElementById('robSecondary').value=pico.o2;
-  notify('Outcomes 已同步 ✓','success');
+  const robO1 = pico._isCocoPop
+    ? (pico._outcome || 'Prevalence rate / Incidence rate')
+    : pico.o1;
+  const robO2 = pico._isCocoPop ? '' : pico.o2;
+  document.getElementById('robPrimary').value=robO1;
+  document.getElementById('robSecondary').value=robO2;
+  notify('Outcomes 已同步 ✓' + (pico._isCocoPop ? '（CoCoPop 模式）' : ''), 'success');
 });
 
 const ROB2_D=['D1 Randomization','D2 Deviations','D3 Missing Data','D4 Measurement','D5 Reporting','Overall'];
@@ -2593,6 +2636,12 @@ function renderRobResults(){
 function getOutcomes(){
   const pico=getPico();
   const set=new Set();
+  if(pico._isCocoPop){
+    const cocoOut=pico._outcome||$v('robPrimary');
+    if(cocoOut) cocoOut.split(/[,;]+/).map(s=>s.trim()).filter(s=>s).forEach(o=>set.add(o));
+    else set.add('Prevalence rate');
+    return[...set];
+  }
   const p1=$v('robPrimary')||pico.o1;
   if(p1) set.add(p1);
   const s2=$v('robSecondary')||pico.o2;
