@@ -292,24 +292,55 @@ td input:focus{border-bottom-color:var(--teal)}
     <div class="card">
       <div class="card-head">
         <div class="ci ci-teal">🎯</div>
-        <div class="cht"><h2>研究主題與 PICO 自動拆解</h2><p>輸入主題，AI 識別 P·I·C·O 並生成 MeSH 策略</p></div>
+        <div class="cht"><h2 id="frameworkTitle">研究主題與框架自動拆解</h2><p id="frameworkSubtitle">輸入主題，AI 自動識別 PICO 或 CoCoPop 並生成 MeSH 策略</p></div>
+      </div>
+      <!-- Framework toggle -->
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:13px;font-weight:600;color:var(--text2)">研究框架：</span>
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+          <label id="lbl-fw-auto" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--teal);color:#fff;border-right:1px solid rgba(255,255,255,.3)">
+            <input type="radio" name="framework" id="fwAuto" value="auto" checked style="display:none"> 🤖 AI 自動偵測
+          </label>
+          <label id="lbl-fw-pico" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
+            <input type="radio" name="framework" id="fwPico" value="PICO" style="display:none"> PICO
+          </label>
+          <label id="lbl-fw-cocopop" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2)">
+            <input type="radio" name="framework" id="fwCocoPop" value="CoCoPop" style="display:none"> CoCoPop
+          </label>
+        </div>
+        <span id="frameworkBadge" style="font-size:11.5px;color:var(--text4);font-style:italic"></span>
       </div>
       <div class="form-group">
         <label class="form-label">研究主題（Free Text）</label>
-        <input type="text" id="researchTopic" placeholder="例如：Immunotherapy for cervical cancer vs chemotherapy">
+        <input type="text" id="researchTopic" placeholder="例如：Prevalence of endometrial cancer in postmenopausal women / HRT vs placebo in endometrial cancer">
       </div>
-      <button class="btn btn-primary" id="btnPico"><span class="spin" id="spPico" style="display:none"></span>✨ AI 自動拆解 PICO</button>
+      <button class="btn btn-primary" id="btnPico"><span class="spin" id="spPico" style="display:none"></span>✨ AI 自動拆解框架</button>
     </div>
 
     <div class="card">
-      <div class="card-head"><div class="ci ci-teal">📋</div><div class="cht"><h2>PICO 確認</h2></div></div>
-      <div class="grid-2">
-        <div class="form-group"><label class="form-label"><span class="ptag">P</span> Population</label><textarea id="picoP" placeholder="研究族群…"></textarea></div>
-        <div class="form-group"><label class="form-label"><span class="ptag">I</span> Intervention</label><textarea id="picoI" placeholder="介入措施…"></textarea></div>
-        <div class="form-group"><label class="form-label"><span class="ptag">C</span> Comparison</label><textarea id="picoC" placeholder="對照組…"></textarea></div>
-        <div class="form-group"><label class="form-label"><span class="ptag">O1</span> Primary Outcome</label><textarea id="picoO1" placeholder="主要結果…"></textarea></div>
+      <div class="card-head"><div class="ci ci-teal">📋</div><div class="cht"><h2 id="frameworkFormTitle">PICO 確認</h2></div></div>
+      <!-- PICO fields -->
+      <div id="picoFields">
+        <div class="grid-2">
+          <div class="form-group"><label class="form-label"><span class="ptag">P</span> Population</label><textarea id="picoP" placeholder="研究族群…"></textarea></div>
+          <div class="form-group"><label class="form-label"><span class="ptag">I</span> Intervention</label><textarea id="picoI" placeholder="介入措施…"></textarea></div>
+          <div class="form-group"><label class="form-label"><span class="ptag">C</span> Comparison</label><textarea id="picoC" placeholder="對照組…"></textarea></div>
+          <div class="form-group"><label class="form-label"><span class="ptag">O1</span> Primary Outcome</label><textarea id="picoO1" placeholder="主要結果…"></textarea></div>
+        </div>
+        <div class="form-group"><label class="form-label"><span class="ptag">O2</span> Secondary Outcomes（逗號分隔）</label><textarea id="picoO2" placeholder="次要結果…" style="min-height:56px"></textarea></div>
       </div>
-      <div class="form-group"><label class="form-label"><span class="ptag">O2</span> Secondary Outcomes（逗號分隔）</label><textarea id="picoO2" placeholder="次要結果…" style="min-height:56px"></textarea></div>
+      <!-- CoCoPop fields (hidden by default) -->
+      <div id="cocopFields" style="display:none">
+        <div class="info-box" style="margin-bottom:12px"><span>📊</span>
+          <div><b>CoCoPop 框架</b>適用於盛行率/發生率研究：<b>Co</b>ndition（疾病/狀態）+ <b>Co</b>ntext（情境/設定）+ <b>Pop</b>ulation（族群）。不需要 Intervention 或 Comparison。</div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group"><label class="form-label"><span class="ptag" style="background:#ede9fe;color:#5b21b6;border-color:rgba(91,33,182,.25)">Co</span> Condition（疾病 / 狀態）</label><textarea id="cocoCondition" placeholder="例如：子宮內膜癌、高血壓、憂鬱症…"></textarea></div>
+          <div class="form-group"><label class="form-label"><span class="ptag" style="background:#ede9fe;color:#5b21b6;border-color:rgba(91,33,182,.25)">Co</span> Context（情境 / 設定）</label><textarea id="cocoContext" placeholder="例如：停經後婦女、開發中國家、初級醫療機構…"></textarea></div>
+        </div>
+        <div class="form-group"><label class="form-label"><span class="ptag" style="background:#ede9fe;color:#5b21b6;border-color:rgba(91,33,182,.25)">Pop</span> Population（研究族群）</label><textarea id="cocoPop" placeholder="例如：亞洲女性、40-70歲、接受篩檢的族群…"></textarea></div>
+        <div class="form-group"><label class="form-label"><span class="ptag">O</span> Outcome（盛行率指標，可選）</label><textarea id="cocoOutcome" placeholder="例如：prevalence rate, incidence rate, disease burden… （可留空）" style="min-height:56px"></textarea></div>
+      </div>
     </div>
 
     <div class="card">
@@ -376,11 +407,14 @@ td input:focus{border-bottom-color:var(--teal)}
           <div style="font-size:11px;color:var(--text4);margin-top:6px" id="revFilterDesc">目前：不篩選（納入所有文章類型）</div>
         </div>
         <!-- Sensitivity selector -->
-        <div style="margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 13px">
-          <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">搜尋靈敏度（Sensitivity）</div>
+        <div id="sensModeBox" style="margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 13px">
+          <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px">搜尋靈敏度（Sensitivity，僅 PICO 適用）</div>
           <div style="display:flex;gap:0;flex-wrap:wrap;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content">
             <label id="lbl-sensPI" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--teal);color:#fff;border-right:1px solid rgba(255,255,255,.3)">
               <input type="radio" name="sensMode" id="fSensPI" value="PI" checked style="display:none"> P + I（最廣）
+            </label>
+            <label id="lbl-sensPIO" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
+              <input type="radio" name="sensMode" id="fSensPIO" value="PIO" style="display:none"> P + I + O
             </label>
             <label id="lbl-sensPIC" style="padding:6px 13px;font-size:12.5px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);border-right:1px solid var(--border)">
               <input type="radio" name="sensMode" id="fSensPIC" value="PIC" style="display:none"> P + I + C
@@ -390,7 +424,7 @@ td input:focus{border-bottom-color:var(--teal)}
             </label>
           </div>
           <div style="font-size:11px;color:var(--text3);margin-top:7px;line-height:1.6" id="sensDesc">
-            <b>P + I（建議）：</b>只要族群和介入符合即納入，避免漏掉 C 或 O 不完全吻合但仍相關的文章（如 Pennacchini 2024 這類以婦癌為主、子宮內膜癌為子族群的研究）。
+            <b>P + I（建議）：</b>只要族群和介入符合即納入，避免漏掉 C 或 O 不完全吻合但仍相關的文章（如子族群研究）。
           </div>
         </div>
         <button class="btn btn-amber" id="btnMesh"><span class="spin" id="spMesh" style="display:none"></span>🔨 組合 PubMed &amp; MEDLINE 查詢策略</button>
@@ -975,23 +1009,46 @@ function setPico(p,i,c,o1,o2){
   updateSbPico();
 }
 function updateSbPico(){
-  const pico=getPico();
   const el=document.getElementById('sbPico');
+  const r=(tag,val,col)=>val?`<div class="sb-pico-row"><b style="color:${col||'#94c5dd'}">${tag}:</b> ${val.substring(0,55)}${val.length>55?'…':''}</div>`:'';
+  if(CURRENT_FRAMEWORK==='CoCoPop'){
+    const cond=$v('cocoCondition'), ctx=$v('cocoContext'), pop=$v('cocoPop'), out=$v('cocoOutcome');
+    if(!cond&&!pop){el.innerHTML='<div class="sb-pico-row" style="color:rgba(255,255,255,.2);font-size:12px;font-style:italic">尚未設定…</div>';return;}
+    el.innerHTML='<div class="sb-pico-row" style="color:#c4b5fd;font-size:10px;font-weight:700;letter-spacing:.06em">CoCoPop</div>'+
+      r('Co',cond,'#c4b5fd')+r('Ctx',ctx,'#c4b5fd')+r('Pop',pop,'#c4b5fd')+r('O',out,'#94c5dd');
+    return;
+  }
+  const pico=getPico();
   const any=pico.p||pico.i||pico.c||pico.o1;
   if(!any){el.innerHTML='<div class="sb-pico-row" style="color:rgba(255,255,255,.2);font-size:12px;font-style:italic">尚未設定…</div>';return;}
-  const r=(tag,val)=>val?`<div class="sb-pico-row"><b>${tag}:</b> ${val.substring(0,55)}${val.length>55?'…':''}</div>`:'';
   el.innerHTML=r('P',pico.p)+r('I',pico.i)+r('C',pico.c)+r('O1',pico.o1)+r('O2',pico.o2);
 }
-['picoP','picoI','picoC','picoO1','picoO2','researchTopic'].forEach(id=>{
-  document.getElementById(id).addEventListener('input',()=>{
+['picoP','picoI','picoC','picoO1','picoO2','cocoCondition','cocoContext','cocoPop','cocoOutcome','researchTopic'].forEach(id=>{
+  document.getElementById(id)?.addEventListener('input',()=>{
     const pico=getPico();
-    localStorage.setItem('metaPico',JSON.stringify({topic:$v('researchTopic'),...pico}));
+    const coco={condition:$v('cocoCondition'),context:$v('cocoContext'),pop:$v('cocoPop'),outcome:$v('cocoOutcome')};
+    localStorage.setItem('metaPico',JSON.stringify({topic:$v('researchTopic'),framework:CURRENT_FRAMEWORK,...pico,coco}));
     updateSbPico();
   });
 });
 try{
   const sv=JSON.parse(localStorage.getItem('metaPico')||'{}');
   if(sv.topic) document.getElementById('researchTopic').value=sv.topic;
+  if(sv.framework){
+    CURRENT_FRAMEWORK=sv.framework;
+    if(sv.framework==='CoCoPop'){
+      document.getElementById('fwCocoPop').checked=true;
+      setFramework('CoCoPop','');
+      if(sv.coco){
+        if(sv.coco.condition) document.getElementById('cocoCondition').value=sv.coco.condition;
+        if(sv.coco.context)   document.getElementById('cocoContext').value=sv.coco.context;
+        if(sv.coco.pop)       document.getElementById('cocoPop').value=sv.coco.pop;
+        if(sv.coco.outcome)   document.getElementById('cocoOutcome').value=sv.coco.outcome;
+      }
+    } else {
+      document.getElementById('fwPico').checked=true;
+    }
+  }
   if(sv.p) setPico(sv.p,sv.i,sv.c,sv.o1,sv.o2);
 }catch(e){}
 
@@ -1003,15 +1060,122 @@ function autoFillRobOutcomes(){
     document.getElementById('robSecondary').value=pico.o2;
 }
 
-// ── TAB 1: PICO ──
-document.getElementById('btnPico').addEventListener('click',async()=>{
-  const topic=$v('researchTopic');
+// ── Framework state ──
+let CURRENT_FRAMEWORK = 'PICO'; // 'PICO' or 'CoCoPop'
+
+function setFramework(fw, label='') {
+  CURRENT_FRAMEWORK = fw;
+  const isPico = fw === 'PICO';
+  document.getElementById('picoFields').style.display  = isPico ? '' : 'none';
+  document.getElementById('cocopFields').style.display = isPico ? 'none' : '';
+  document.getElementById('frameworkFormTitle').textContent = isPico ? 'PICO 確認' : 'CoCoPop 確認';
+  document.getElementById('frameworkTitle').textContent = isPico
+    ? '研究主題與 PICO 自動拆解'
+    : '研究主題與 CoCoPop 自動拆解';
+  document.getElementById('frameworkSubtitle').textContent = isPico
+    ? '介入研究 / RCT / 觀察性研究：族群 · 介入 · 對照 · 結果'
+    : '盛行率 / 發生率研究：疾病 · 情境 · 族群 → 以 CoCoPop 布林策略搜尋';
+  document.getElementById('frameworkBadge').textContent = label ? `（AI 偵測：${label}）` : '';
+
+  // Hide/show PICO-specific sensitivity selector for CoCoPop
+  const sensBox = document.getElementById('sensModeBox');
+  if(sensBox) sensBox.style.display = isPico ? '' : 'none';
+
+  // For CoCoPop, auto-switch to P+I equivalent (Co+Pop) — handled in query builder
+  updateSbPico();
+}
+
+// Framework radio buttons
+document.querySelectorAll('input[name="framework"]').forEach(r => {
+  r.addEventListener('change', () => {
+    ['auto','pico','cocopop'].forEach(v => {
+      const lbl = document.getElementById('lbl-fw-'+v);
+      if(!lbl) return;
+      const isActive = r.value.toLowerCase() === v || (v==='auto' && r.value==='auto');
+      lbl.style.background = isActive ? 'var(--teal)' : 'var(--surface)';
+      lbl.style.color = isActive ? '#fff' : 'var(--text2)';
+    });
+    if(r.value !== 'auto') {
+      setFramework(r.value, '');
+    }
+  });
+});
+
+// ── TAB 1: Framework auto-decompose ──
+document.getElementById('btnPico').addEventListener('click', async () => {
+  const topic = $v('researchTopic');
   if(!topic) return notify('請輸入研究主題','warn');
-  const btn=document.getElementById('btnPico'),sp=document.getElementById('spPico');
-  btn.disabled=true;sp.style.display='inline-block';
-  try{
-    const res=await gemini(
-      `You are a systematic review expert. Extract the PICO from this research topic.
+  const btn = document.getElementById('btnPico'), sp = document.getElementById('spPico');
+  const fwMode = document.querySelector('input[name="framework"]:checked')?.value || 'auto';
+  btn.disabled=true; sp.style.display='inline-block';
+
+  try {
+    // Step 1: If auto mode, detect framework first
+    let detectedFw = fwMode === 'auto' ? null : fwMode;
+
+    if(fwMode === 'auto') {
+      const detectRes = await gemini(
+        `You are a systematic review methodologist. Classify this research topic.
+
+Research topic: "${topic}"
+
+Classify this research topic. Choose ONE:
+
+PICO = interventional/comparative study: comparing treatments, drugs, surgeries, exposures — has a clear intervention and comparison group.
+CoCoPop = epidemiological/descriptive study: asking how common/frequent a disease or condition is (prevalence, incidence, rate, burden, distribution).
+
+Keywords suggesting CoCoPop: prevalence, incidence, epidemiology, burden, frequency, how common, rate, proportion, distribution.
+Keywords suggesting PICO: effect of, efficacy, treatment, compared to, versus, vs, intervention, does X reduce, RCT.
+
+Reply with ONLY one word: PICO or CoCoPop`, 30);
+      detectedFw = detectRes.trim().toUpperCase().includes('COCOP') ? 'CoCoPop' : 'PICO';
+
+      // Auto-switch framework radio
+      if(detectedFw === 'CoCoPop') {
+        document.getElementById('fwCocoPop').checked = true;
+      } else {
+        document.getElementById('fwPico').checked = true;
+      }
+    }
+
+    // Step 2: Decompose according to detected framework
+    let prompt, res;
+    if(detectedFw === 'CoCoPop') {
+      prompt = `You are a systematic review expert specializing in prevalence studies. Extract the CoCoPop framework from this research topic.
+
+Research topic: "${topic}"
+
+CoCoPop stands for: Condition | Context | Population | Outcome (optional)
+
+YOUR RESPONSE MUST BE EXACTLY ONE LINE with 4 fields separated by "|":
+Condition | Context | Population | Outcome (prevalence/incidence measure, or "N/A")
+
+- Condition = the disease, disorder, or health state being studied
+- Context = setting, time period, geographic area, or circumstances
+- Population = the specific group of people studied
+- Outcome = prevalence rate, incidence rate, disease burden, or N/A
+
+Example: Endometrial cancer | Post-menopausal women in Asia | Women aged 45-75 | Prevalence rate, incidence rate`;
+      res = await gemini(prompt, 400);
+
+      const lines = res.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+      let pipeLine = lines.find(l=>(l.match(/\|/g)||[]).length>=2) || lines.find(l=>l.includes('|'));
+      if(pipeLine && pipeLine.replace) pipeLine = pipeLine.replace(/^[^|]*:\s*/, ''); // strip any label prefix
+
+      if(pipeLine) {
+        const parts = pipeLine.split('|').map(s=>s.trim());
+        document.getElementById('cocoCondition').value = parts[0]||'';
+        document.getElementById('cocoContext').value   = parts[1]||'';
+        document.getElementById('cocoPop').value       = parts[2]||'';
+        document.getElementById('cocoOutcome').value   = (parts[3]||'').replace(/^N\/A$/i,'');
+      }
+
+      setFramework('CoCoPop', 'CoCoPop 盛行率研究');
+      notify('CoCoPop 框架拆解成功 ✓（盛行率研究）','success');
+
+    } else {
+      // PICO
+      prompt = `You are a systematic review expert. Extract the PICO from this research topic.
 
 Research topic: "${topic}"
 
@@ -1019,45 +1183,34 @@ YOUR RESPONSE MUST BE EXACTLY ONE LINE with 5 fields separated by the pipe chara
 Do NOT write any other text, explanation, or header. Just the one pipe-separated line.
 
 Field order: Population | Intervention | Comparison | Primary Outcome | Secondary Outcomes
-
 Secondary Outcomes = comma-separated list in one field.
 
-Example output (copy this format exactly):
-Adult patients with locally advanced cervical cancer | Neoadjuvant immunotherapy (PD-1 inhibitors) | Standard chemotherapy | Pathological complete response rate | Overall survival, Progression-free survival, Grade ≥3 adverse events`,600);
+Example: Adult patients with locally advanced cervical cancer | Neoadjuvant immunotherapy (PD-1 inhibitors) | Standard chemotherapy | Pathological complete response rate | Overall survival, Progression-free survival`;
+      res = await gemini(prompt, 500);
 
-    // Robust parsing: find the line that contains at least 3 pipe characters
-    const lines = res.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
-    let pipeLine = lines.find(l=>(l.match(/\|/g)||[]).length>=3);
+      const lines = res.split('\n').map(l=>l.trim()).filter(l=>l.length>0);
+      let pipeLine = lines.find(l=>(l.match(/\|/g)||[]).length>=3)
+        || lines.find(l=>l.includes('|'))
+        || (res.includes('|') ? res.replace(/\n/g,' ') : null);
 
-    // Fallback: use any line with at least 1 pipe
-    if(!pipeLine) pipeLine = lines.find(l=>l.includes('|'));
-
-    // Fallback 2: use the full response if it has pipes
-    if(!pipeLine && res.includes('|')) pipeLine = res.replace(/\n/g,' ');
-
-    if(pipeLine){
-      const parts = pipeLine.split('|').map(s=>s.trim()).filter(s=>s.length>0);
-      // Accept if we got at least 3 parts (P, I, C minimum)
-      if(parts.length>=3){
-        setPico(
-          parts[0]||'',
-          parts[1]||'',
-          parts[2]||'',
-          parts[3]||'',
-          parts[4]||''
-        );
-        notify('PICO 拆解成功 ✓','success');
+      if(pipeLine) {
+        const parts = pipeLine.split('|').map(s=>s.trim()).filter(s=>s.length>0);
+        if(parts.length>=3) {
+          setPico(parts[0]||'', parts[1]||'', parts[2]||'', parts[3]||'', parts[4]||'');
+          setFramework('PICO', fwMode==='auto' ? 'PICO 介入研究' : '');
+          notify('PICO 拆解成功 ✓','success');
+        } else {
+          notify('AI 回傳格式不符，請手動調整','warn');
+          document.getElementById('picoP').value = res.substring(0,200);
+        }
       } else {
-        notify('AI 回傳格式不符，已顯示原始結果，請手動調整','warn');
-        document.getElementById('picoP').value=res.substring(0,200);
+        notify('無法解析 AI 回傳，請手動填寫','warn');
+        document.getElementById('picoP').value = res.substring(0,300);
       }
-    } else {
-      // Last resort: show raw response in P field
-      notify('無法解析 AI 回傳，請參考以下內容手動填寫','warn');
-      document.getElementById('picoP').value=res.substring(0,300);
     }
-  }catch(e){notify(e.message,'error');}
-  btn.disabled=false;sp.style.display='none';
+
+  } catch(e) { notify(e.message,'error'); }
+  btn.disabled=false; sp.style.display='none';
 });
 
 // ══════════════════════════════════════════════════════
@@ -1082,6 +1235,49 @@ document.querySelectorAll('.db-tab-btn').forEach(btn => {
 
 // ── PHASE 1: AI suggests BROAD candidate keywords ──
 document.getElementById('btnSuggestMesh').addEventListener('click', async () => {
+  // For CoCoPop, use Condition/Context/Population fields
+  if(CURRENT_FRAMEWORK === 'CoCoPop') {
+    const condition = document.getElementById('cocoCondition')?.value?.trim();
+    const context   = document.getElementById('cocoContext')?.value?.trim();
+    const pop       = document.getElementById('cocoPop')?.value?.trim();
+    if(!condition && !pop) return notify('請先填寫 CoCoPop 欄位（疾病 / 族群）','warn');
+    // Inject into MESH_STATE as Co1/Co2/Pop groups for keyword generation
+    const tempItems = [
+      condition && {key:'Co1', label:'Condition（疾病/狀態）', value:condition},
+      context   && {key:'Co2', label:'Context（情境/設定）',   value:context},
+      pop       && {key:'Pop', label:'Population（族群）',     value:pop},
+    ].filter(Boolean);
+    // Redirect to keyword generation with CoCoPop groups
+    const btn2=document.getElementById('btnSuggestMesh'), sp2=document.getElementById('spSuggest');
+    btn2.disabled=true; sp2.style.display='inline-block';
+    MESH_STATE.groups=[];
+    document.getElementById('meshSuggestOut').style.display='block';
+    document.getElementById('meshValidateSection').style.display='none';
+    document.getElementById('meshBuildSection').style.display='none';
+    for(const item of tempItems) {
+      const prompt=`Suggest 5-7 PubMed MeSH terms and free-text keywords for this element of a CoCoPop systematic review.
+Element: ${item.label}
+Value: ${item.value}
+Output ONE LINE: keyword1 | keyword2 | keyword3 | ...
+All keywords in English. Each 1-4 words. No explanations.`;
+      let kws=[];
+      try{
+        const res=await gemini(prompt,400);
+        const joined=res.trim().split('\n').map(l=>l.replace(/^[A-Za-z][a-z]*\s*:\s*/,'')).join(' | ');
+        kws=joined.split('|').map(s=>s.trim()).filter(s=>s.length>=3&&s.length<=80)
+          .filter((s,i,arr)=>arr.findIndex(t=>t.toLowerCase()===s.toLowerCase())===i);
+      }catch(e){ kws=[item.value]; }
+      if(!kws.length) kws=[item.value];
+      MESH_STATE.groups.push({picoKey:item.key, label:item.label, candidates:kws.map(kw=>({keyword:kw,meshTerm:null,entryTerms:[],uid:null,validated:false,selected:true,scopeNote:'',treeNums:[]}))});
+    }
+    renderSuggestPanels();
+    document.getElementById('meshValidateSection').style.display='block';
+    document.getElementById('meshBuildSection').style.display='block';
+    notify(`CoCoPop 關鍵詞建議完成 ✓  共 ${MESH_STATE.groups.length} 組`,'success');
+    btn2.disabled=false; sp2.style.display='none';
+    return;
+  }
+
   const pico = getPico();
   if (!pico.p) return notify('請先填寫 PICO', 'warn');
   const btn = document.getElementById('btnSuggestMesh'), sp = document.getElementById('spSuggest');
@@ -1407,14 +1603,14 @@ document.getElementById('btnMesh').addEventListener('click', () => {
   const fEng   = document.getElementById('fEng').checked;
   const revMode = document.querySelector('input[name="revFilter"]:checked')?.value || 'none';
   const sensMode = document.querySelector('input[name="sensMode"]:checked')?.value || 'PI';
+  const isCocoPop = CURRENT_FRAMEWORK === 'CoCoPop';
 
   // ── Sense mode radio styling ──
-  ['PI','PIC','PICO'].forEach(v=>{
-    const lbl=document.getElementById('lbl-sens'+v.replace('+',''));
-    if(!lbl) return;
-    const isActive = sensMode===v;
-    lbl.style.background = isActive ? 'var(--teal)' : 'var(--surface)';
-    lbl.style.color = isActive ? '#fff' : 'var(--text2)';
+  const sensIdMap2={PI:'lbl-sensPI',PIO:'lbl-sensPIO',PIC:'lbl-sensPIC',PICO:'lbl-sensFull'};
+  Object.entries(sensIdMap2).forEach(([v,id])=>{
+    const lbl=document.getElementById(id); if(!lbl) return;
+    lbl.style.background=sensMode===v?'var(--teal)':'var(--surface)';
+    lbl.style.color=sensMode===v?'#fff':'var(--text2)';
   });
 
   // ── Build keyword groups ──
@@ -1427,6 +1623,71 @@ document.getElementById('btnMesh').addEventListener('click', () => {
     );
     groupsPubmed[g.picoKey] = `(\n  ${parts.join('\n  OR ')}\n)`;
   });
+
+  // ── CoCoPop: use Condition+Context+Population (Co+Co+Pop) AND combination ──
+  if(isCocoPop) {
+    // Add plain text fallback groups from CoCoPop fields if MESH_STATE is empty
+    const cocoFields = [
+      {key:'Co1', val: document.getElementById('cocoCondition')?.value},
+      {key:'Co2', val: document.getElementById('cocoContext')?.value},
+      {key:'Pop', val: document.getElementById('cocoPop')?.value},
+      {key:'O',   val: document.getElementById('cocoOutcome')?.value},
+    ].filter(f=>f.val&&f.val.trim());
+
+    // Build prevalence-focused PubMed query from CoCoPop fields
+    const cocoParts = cocoFields
+      .filter(f=>f.key !== 'O') // O is optional for CoCoPop
+      .map(f => {
+        const kw = f.val.trim();
+        // Use tiab search for each field
+        const words = kw.split(/[,;]+/).map(w=>w.trim()).filter(w=>w.length>2);
+        if(words.length > 1)
+          return '(\n  ' + words.map(w=>`"${w}"[tiab]`).join('\n  OR ') + '\n)';
+        return `"${kw}"[tiab]`;
+      });
+
+    // Prevalence/incidence filters
+    const prevFilters = ['"prevalence"[tiab]','OR "incidence"[tiab]','OR "epidemiology"[Subheading]'];
+    const outField = document.getElementById('cocoOutcome')?.value?.trim();
+    const outPart = outField ? `(\n  "prevalence"[tiab]\n  OR "incidence"[tiab]\n  OR "${outField}"[tiab]\n)` 
+                             : `("prevalence"[tiab] OR "incidence"[tiab] OR "epidemiology"[Subheading])`;
+
+    let cocoQuery = [...cocoParts, outPart].join('\nAND\n');
+    if(fHuman) cocoQuery += '\nAND "Humans"[Mesh]';
+    if(fEng)   cocoQuery += '\nAND "English"[lang]';
+    const neg=[];
+    if(revMode==='exclRev')  neg.push('"Review"[pt]');
+    if(revMode==='exclMeta') neg.push('"Meta-Analysis"[pt]');
+    if(revMode==='exclBoth') neg.push('"Review"[pt]','"Systematic Review"[pt]','"Meta-Analysis"[pt]');
+    if(neg.length) cocoQuery += '\nNOT (' + neg.join(' OR ') + ')';
+
+    // Build Ovid MEDLINE strategy for CoCoPop
+    let cocoOvid = [];
+    let ln = 1;
+    const cocoGrps = [];
+    cocoFields.filter(f=>f.key!=='O').forEach(f=>{
+      const words = f.val.split(/[,;]+/).map(w=>w.trim()).filter(w=>w.length>2);
+      const start=ln;
+      words.forEach(w=>{ cocoOvid.push(`${ln}. ${w}.mp.`); ln++; });
+      cocoOvid.push(`${ln}. ${Array.from({length:ln-start},(_,i)=>start+i).join(' or ')}`);
+      cocoGrps.push(ln); ln++;
+    });
+    // Prevalence line
+    cocoOvid.push(`${ln}. prevalence.mp. or incidence.mp. or epidemiology.sh.`); cocoGrps.push(ln); ln++;
+    cocoOvid.push(`${ln}. ${cocoGrps.join(' and ')}`);
+
+    document.getElementById('pubmedQueryEdit').value = cocoQuery;
+    document.getElementById('medlineQueryEdit').value = cocoOvid.join('\n');
+    document.getElementById('meshOut').style.display = 'block';
+    updateOpenPubmedLink(cocoQuery);
+    document.getElementById('pubmedResultCount').textContent = '';
+    document.getElementById('medlineResultCount').textContent = '';
+    document.getElementById('sensitiveQueryBox').style.display = 'none';
+    document.getElementById('btnSearchSensitive').style.display = 'none';
+    notify('CoCoPop PubMed & MEDLINE 策略已組合 ✓','success');
+    document.getElementById('meshOut').scrollIntoView({behavior:'smooth',block:'nearest'});
+    return; // Stop here for CoCoPop
+  }
 
   // ── Helper: build PubMed query for a given PICO subset ──
   function buildPubmedQuery(picoKeys) {
@@ -1448,7 +1709,7 @@ document.getElementById('btnMesh').addEventListener('click', () => {
   }
 
   // Main query based on selected sensitivity
-  const picoOrderMap = { 'PI':['P','I'], 'PIC':['P','I','C'], 'PICO':['P','I','C','O'] };
+  const picoOrderMap = { 'PI':['P','I'], 'PIO':['P','I','O'], 'PIC':['P','I','C'], 'PICO':['P','I','C','O'] };
   const mainKeys = picoOrderMap[sensMode] || ['P','I'];
   const pubmedQuery = buildPubmedQuery(mainKeys);
 
@@ -1519,13 +1780,15 @@ document.getElementById('btnMesh').addEventListener('click', () => {
 document.querySelectorAll('input[name="sensMode"]').forEach(r=>{
   r.addEventListener('change',()=>{
     const descs={
-      PI:'<b>P + I（建議）：</b>只要族群和介入符合即納入，避免漏掉 C 或 O 不吻合但仍相關的研究（靈敏度最高）。',
-      PIC:'<b>P + I + C：</b>族群、介入、對照組均需符合，適度提升特異性。',
+      PI:  '<b>P + I（最廣）：</b>只要族群和介入符合即納入，靈敏度最高，避免漏掉子族群研究。',
+      PIO: '<b>P + I + O：</b>加入結果條件，適用於有明確 outcome 但對照組多樣的研究。',
+      PIC: '<b>P + I + C：</b>族群、介入、對照組均需符合，適度提升特異性。',
       PICO:'<b>P + I + C + O（最精確）：</b>四個條件均需符合，文章數最少但精準度最高。',
     };
     document.getElementById('sensDesc').innerHTML = descs[r.value]||'';
-    ['PI','PIC','PICO'].forEach(v=>{
-      const lbl=document.getElementById('lbl-sens'+v);
+    const sensIdMap = {PI:'lbl-sensPI', PIO:'lbl-sensPIO', PIC:'lbl-sensPIC', PICO:'lbl-sensFull'};
+    Object.entries(sensIdMap).forEach(([v,id])=>{
+      const lbl=document.getElementById(id);
       if(!lbl) return;
       lbl.style.background = r.value===v ? 'var(--teal)' : 'var(--surface)';
       lbl.style.color = r.value===v ? '#fff' : 'var(--text2)';
