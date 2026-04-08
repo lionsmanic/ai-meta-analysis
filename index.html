@@ -2390,19 +2390,20 @@ Line 2: REASON: 繁體中文 80-120字，說明①研究設計②族群是否符
 // ── Screening download handlers ──
 function screeningToRows(){
   return S.screeningResults.map(r=>({
-    PMID:        r.pmid   || '',
-    Title:       r.title  || '',
-    Author:      r.firstAuthor || '',
-    Year:        r.year   || '',
-    StudyID:     r.studyId || '',
-    Result:      r.status === 'INCLUDED' ? '建議納入' : r.status === 'POSSIBLY_RELEVANT' ? '待全文審' : '建議排除',
-    Result_EN:   r.status || '',
-    Reason:      r.reason || '',
-    Design:      r.design || '',
-    Population:  r.population || '',
-    Intervention:r.intervention || '',
-    Control:     r.control || '',
-    Outcomes:    r.outcomes || '',
+    PMID:         r.pmid   || '',
+    PubMed_Link:  r.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/` : '',
+    Title:        r.title  || '',
+    Author:       r.firstAuthor || '',
+    Year:         r.year   || '',
+    StudyID:      r.studyId || '',
+    Result:       r.status==='INCLUDED'?'建議納入':r.status==='POSSIBLY_RELEVANT'?'待全文審':'建議排除',
+    Result_EN:    r.status || '',
+    Reason:       r.reason || '',
+    Design:       r.design || '',
+    Population:   r.population || '',
+    Intervention: r.intervention || '',
+    Control:      r.control || '',
+    Outcomes:     r.outcomes || '',
   }));
 }
 
@@ -2430,7 +2431,7 @@ document.getElementById('btnDownloadScreenXLSX').addEventListener('click',()=>{
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     // Column widths
     ws['!cols'] = [
-      {wch:12},{wch:60},{wch:18},{wch:8},{wch:22},
+      {wch:12},{wch:45},{wch:60},{wch:18},{wch:8},{wch:22},
       {wch:14},{wch:14},{wch:80},{wch:20},{wch:25},{wch:25},{wch:25},{wch:30},
     ];
     // Style header row (bold) — basic SheetJS doesn't support styles without Pro, so skip
