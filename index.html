@@ -349,7 +349,7 @@ td input:focus{border-bottom-color:var(--teal)}
       <!-- Phase 1 -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
         <div style="background:var(--teal);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">1</div>
-        <span style="font-weight:600;font-size:14px">AI 提議各 PICO 元素的候選關鍵詞</span>
+        <span style="font-weight:600;font-size:14px" id="phase1Label">AI 提議各 PICO 元素的候選關鍵詞</span>
         <button class="btn btn-amber btn-sm" id="btnSuggestMesh"><span class="spin" id="spSuggest" style="display:none"></span>✨ 產生關鍵詞建議</button>
       </div>
       <div id="meshSuggestOut" style="display:none;margin-bottom:16px">
@@ -372,13 +372,22 @@ td input:focus{border-bottom-color:var(--teal)}
           <div style="background:var(--teal);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">3</div>
           <span style="font-weight:600;font-size:14px">Study Design Filters &amp; 組合雙資料庫策略</span>
         </div>
-        <!-- Study design filters -->
-        <div style="margin-bottom:12px">
-          <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px">研究設計限定</div>
-          <div class="flex-row" style="gap:14px;flex-wrap:wrap">
+        <!-- Study design filters — dynamic by framework -->
+        <div style="margin-bottom:12px" id="designFilterBox">
+          <div style="font-size:12px;font-weight:700;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px" id="designFilterTitle">研究設計限定</div>
+          <!-- PICO filters (intervention studies) -->
+          <div id="picoDesignFilters" class="flex-row" style="gap:14px;flex-wrap:wrap">
             <label class="cb-lbl"><input type="checkbox" id="fRCT"> 限定 RCT</label>
+            <label class="cb-lbl"><input type="checkbox" id="fObserv"> 含觀察性研究</label>
             <label class="cb-lbl"><input type="checkbox" id="fHuman" checked> 限定人體研究</label>
             <label class="cb-lbl"><input type="checkbox" id="fEng" checked> 限定英文</label>
+          </div>
+          <!-- CoCoPop filters (prevalence/epidemiology studies) -->
+          <div id="cocoDesignFilters" class="flex-row" style="gap:14px;flex-wrap:wrap;display:none">
+            <label class="cb-lbl"><input type="checkbox" id="fPrevalence" checked> 限定盛行率/發生率研究</label>
+            <label class="cb-lbl"><input type="checkbox" id="fCrossSect"> 限定 Cross-sectional</label>
+            <label class="cb-lbl"><input type="checkbox" id="fHuman2" checked> 限定人體研究</label>
+            <label class="cb-lbl"><input type="checkbox" id="fEng2" checked> 限定英文</label>
           </div>
         </div>
         <!-- Review / Meta-Analysis filter group -->
@@ -1077,11 +1086,31 @@ function setFramework(fw, label='') {
     : '盛行率 / 發生率研究：疾病 · 情境 · 族群 → 以 CoCoPop 布林策略搜尋';
   document.getElementById('frameworkBadge').textContent = label ? `（AI 偵測：${label}）` : '';
 
-  // Hide/show PICO-specific sensitivity selector for CoCoPop
+  // Swap UI labels and filter panels based on framework
   const sensBox = document.getElementById('sensModeBox');
   if(sensBox) sensBox.style.display = isPico ? '' : 'none';
 
-  // For CoCoPop, auto-switch to P+I equivalent (Co+Pop) — handled in query builder
+  // Phase 1 label
+  const p1lbl = document.getElementById('phase1Label');
+  if(p1lbl) p1lbl.textContent = isPico
+    ? 'AI 提議各 PICO 元素的候選關鍵詞'
+    : 'AI 提議各 CoCoPop 元素的候選關鍵詞';
+
+  // Phase 3 design filters
+  const picoDF  = document.getElementById('picoDesignFilters');
+  const cocoDF  = document.getElementById('cocoDesignFilters');
+  const dfTitle = document.getElementById('designFilterTitle');
+  if(picoDF) picoDF.style.display = isPico ? 'flex' : 'none';
+  if(cocoDF) cocoDF.style.display = isPico ? 'none' : 'flex';
+  if(dfTitle) dfTitle.textContent = isPico ? '研究設計限定' : '研究設計限定（盛行率研究）';
+
+  // Phase 3 generate button text
+  const btnMeshEl = document.getElementById('btnMesh');
+  if(btnMeshEl) btnMeshEl.innerHTML = btnMeshEl.innerHTML.replace(
+    /組合 PubMed.*策略/,
+    isPico ? '組合 PubMed & MEDLINE 查詢策略' : '組合 CoCoPop 雙資料庫策略'
+  );
+
   updateSbPico();
 }
 
@@ -1624,57 +1653,101 @@ document.getElementById('btnMesh').addEventListener('click', () => {
     groupsPubmed[g.picoKey] = `(\n  ${parts.join('\n  OR ')}\n)`;
   });
 
-  // ── CoCoPop: use Condition+Context+Population (Co+Co+Pop) AND combination ──
+  // ── CoCoPop: use MeSH-validated keywords (groupsPubmed) for Co1/Co2/Pop groups ──
   if(isCocoPop) {
-    // Add plain text fallback groups from CoCoPop fields if MESH_STATE is empty
-    const cocoFields = [
-      {key:'Co1', val: document.getElementById('cocoCondition')?.value},
-      {key:'Co2', val: document.getElementById('cocoContext')?.value},
-      {key:'Pop', val: document.getElementById('cocoPop')?.value},
-      {key:'O',   val: document.getElementById('cocoOutcome')?.value},
-    ].filter(f=>f.val&&f.val.trim());
+    // CoCoPop-specific filter checkboxes
+    const fPrevalence  = document.getElementById('fPrevalence')?.checked ?? true;
+    const fCrossSect   = document.getElementById('fCrossSect')?.checked ?? false;
+    const fHumanCoco   = document.getElementById('fHuman2')?.checked ?? true;
+    const fEngCoco     = document.getElementById('fEng2')?.checked ?? true;
 
-    // Build prevalence-focused PubMed query from CoCoPop fields
-    const cocoParts = cocoFields
-      .filter(f=>f.key !== 'O') // O is optional for CoCoPop
-      .map(f => {
-        const kw = f.val.trim();
-        // Use tiab search for each field
-        const words = kw.split(/[,;]+/).map(w=>w.trim()).filter(w=>w.length>2);
-        if(words.length > 1)
-          return '(\n  ' + words.map(w=>`"${w}"[tiab]`).join('\n  OR ') + '\n)';
-        return `"${kw}"[tiab]`;
+    // Labels for CoCoPop groups (for Ovid comments)
+    const cocoGroupLabels = {Co1:'Condition', Co2:'Context', Pop:'Population', O:'Outcome'};
+
+    // Build PubMed parts from MeSH-validated groupsPubmed (same as PICO pipeline)
+    // CoCoPop groups have picoKey: Co1, Co2, Pop (O is optional)
+    const cocoKeys = ['Co1','Co2','Pop'];
+    const cocoQueryParts = cocoKeys.filter(k=>groupsPubmed[k]).map(k=>groupsPubmed[k]);
+
+    // Fallback: if no validated keywords, use raw textarea values
+    if(!cocoQueryParts.length) {
+      const rawFields = [
+        {key:'Co1', val: document.getElementById('cocoCondition')?.value?.trim()},
+        {key:'Co2', val: document.getElementById('cocoContext')?.value?.trim()},
+        {key:'Pop', val: document.getElementById('cocoPop')?.value?.trim()},
+      ].filter(f=>f.val);
+      rawFields.forEach(f=>{
+        const words=f.val.split(/[,;]+/).map(w=>w.trim()).filter(w=>w.length>2);
+        cocoQueryParts.push(
+          words.length>1 ? '(\n  '+words.map(w=>`"${w}"[tiab]`).join('\n  OR ')+'\n)' : `"${f.val}"[tiab]`
+        );
       });
+    }
 
-    // Prevalence/incidence filters
-    const prevFilters = ['"prevalence"[tiab]','OR "incidence"[tiab]','OR "epidemiology"[Subheading]'];
+    // Prevalence/incidence outcome term
     const outField = document.getElementById('cocoOutcome')?.value?.trim();
-    const outPart = outField ? `(\n  "prevalence"[tiab]\n  OR "incidence"[tiab]\n  OR "${outField}"[tiab]\n)` 
-                             : `("prevalence"[tiab] OR "incidence"[tiab] OR "epidemiology"[Subheading])`;
+    let prevPart;
+    if(fPrevalence) {
+      prevPart = outField
+        ? `(\n  "prevalence"[tiab]\n  OR "incidence"[tiab]\n  OR "epidemiology"[Subheading]\n  OR "${outField}"[tiab]\n)`
+        : `("prevalence"[tiab] OR "incidence"[tiab] OR "epidemiology"[Subheading])`;
+      cocoQueryParts.push(prevPart);
+    }
 
-    let cocoQuery = [...cocoParts, outPart].join('\nAND\n');
-    if(fHuman) cocoQuery += '\nAND "Humans"[Mesh]';
-    if(fEng)   cocoQuery += '\nAND "English"[lang]';
-    const neg=[];
-    if(revMode==='exclRev')  neg.push('"Review"[pt]');
-    if(revMode==='exclMeta') neg.push('"Meta-Analysis"[pt]');
-    if(revMode==='exclBoth') neg.push('"Review"[pt]','"Systematic Review"[pt]','"Meta-Analysis"[pt]');
-    if(neg.length) cocoQuery += '\nNOT (' + neg.join(' OR ') + ')';
+    let cocoQuery = cocoQueryParts.join('\nAND\n');
 
-    // Build Ovid MEDLINE strategy for CoCoPop
-    let cocoOvid = [];
-    let ln = 1;
-    const cocoGrps = [];
-    cocoFields.filter(f=>f.key!=='O').forEach(f=>{
-      const words = f.val.split(/[,;]+/).map(w=>w.trim()).filter(w=>w.length>2);
-      const start=ln;
-      words.forEach(w=>{ cocoOvid.push(`${ln}. ${w}.mp.`); ln++; });
-      cocoOvid.push(`${ln}. ${Array.from({length:ln-start},(_,i)=>start+i).join(' or ')}`);
+    // Apply CoCoPop-specific filters
+    const cocoPos=[];
+    if(fCrossSect) cocoPos.push('"Cross-Sectional Studies"[Mesh]');
+    if(fHumanCoco) cocoPos.push('"Humans"[Mesh]');
+    if(fEngCoco)   cocoPos.push('"English"[lang]');
+    if(revMode==='onlyRev')  cocoPos.push('"Review"[pt]');
+    if(revMode==='onlyMeta') cocoPos.push('"Meta-Analysis"[pt]');
+    if(cocoPos.length) cocoQuery += '\nAND ' + cocoPos.join('\nAND ');
+
+    const cocoNeg=[];
+    if(revMode==='exclRev')  cocoNeg.push('"Review"[pt]');
+    if(revMode==='exclMeta') cocoNeg.push('"Meta-Analysis"[pt]');
+    if(revMode==='exclBoth') cocoNeg.push('"Review"[pt]','"Systematic Review"[pt]','"Meta-Analysis"[pt]');
+    if(cocoNeg.length) cocoQuery += '\nNOT (' + cocoNeg.join(' OR ') + ')';
+
+    // ── Build Ovid MEDLINE strategy from MeSH-validated MESH_STATE groups ──
+    let cocoOvid=[], ln=1, cocoGrps=[];
+    const cocoOvidGroups = MESH_STATE.groups.filter(g=>['Co1','Co2','Pop'].includes(g.picoKey));
+    if(cocoOvidGroups.length) {
+      // Use validated MeSH terms (same logic as PICO Ovid builder)
+      cocoOvidGroups.forEach(g=>{
+        const sel=g.candidates.filter(c=>c.selected);
+        if(!sel.length) return;
+        const start=ln;
+        sel.forEach(c=>{
+          if(c.meshTerm){ cocoOvid.push(`${ln}. exp ${c.meshTerm}/`); ln++; }
+          cocoOvid.push(`${ln}. ${c.keyword}.mp.`); ln++;
+        });
+        const end=ln-1;
+        cocoOvid.push(`${ln}. ${Array.from({length:end-start+1},(_,i)=>start+i).join(' or ')}`);
+        cocoGrps.push(ln); ln++;
+      });
+    } else {
+      // Fallback: raw fields
+      ['cocoCondition','cocoContext','cocoPop'].forEach(id=>{
+        const val=document.getElementById(id)?.value?.trim();
+        if(!val) return;
+        const words=val.split(/[,;]+/).map(w=>w.trim()).filter(w=>w.length>2);
+        const start=ln;
+        words.forEach(w=>{ cocoOvid.push(`${ln}. ${w}.mp.`); ln++; });
+        cocoOvid.push(`${ln}. ${Array.from({length:ln-start},(_,i)=>start+i).join(' or ')}`);
+        cocoGrps.push(ln); ln++;
+      });
+    }
+    if(fPrevalence){
+      cocoOvid.push(`${ln}. prevalence.mp. or incidence.mp. or epidemiology.sh.`);
       cocoGrps.push(ln); ln++;
-    });
-    // Prevalence line
-    cocoOvid.push(`${ln}. prevalence.mp. or incidence.mp. or epidemiology.sh.`); cocoGrps.push(ln); ln++;
-    cocoOvid.push(`${ln}. ${cocoGrps.join(' and ')}`);
+    }
+    if(cocoGrps.length>1) cocoOvid.push(`${ln}. ${cocoGrps.join(' and ')}`);
+    if(fCrossSect){ ln++; cocoOvid.push(`${ln}. cross-sectional studies/`); cocoOvid.push(`${ln+1}. ${cocoGrps[cocoGrps.length-1]} and ${ln}`); }
+    if(fHumanCoco){ const hln=cocoOvid.length+1; cocoOvid.push(`${hln}. Humans/`); }
+    if(fEngCoco)  { const eln=cocoOvid.length+1; cocoOvid.push(`${eln}. English.la.`); }
 
     document.getElementById('pubmedQueryEdit').value = cocoQuery;
     document.getElementById('medlineQueryEdit').value = cocoOvid.join('\n');
@@ -1684,9 +1757,9 @@ document.getElementById('btnMesh').addEventListener('click', () => {
     document.getElementById('medlineResultCount').textContent = '';
     document.getElementById('sensitiveQueryBox').style.display = 'none';
     document.getElementById('btnSearchSensitive').style.display = 'none';
-    notify('CoCoPop PubMed & MEDLINE 策略已組合 ✓','success');
+    notify('CoCoPop PubMed & MEDLINE 策略已組合 ✓（已套用 MeSH 驗證詞）','success');
     document.getElementById('meshOut').scrollIntoView({behavior:'smooth',block:'nearest'});
-    return; // Stop here for CoCoPop
+    return;
   }
 
   // ── Helper: build PubMed query for a given PICO subset ──
